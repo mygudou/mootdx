@@ -2,6 +2,7 @@ from shutil import copyfile
 
 from mootdx.reader import Reader
 from mootdx.reader import StdReader
+from mootdx.contrib.compat import MooTdxDailyBarReader
 
 
 def test_reader_find_path_uses_ss_suffix_for_sh_market():
@@ -25,3 +26,7 @@ def test_reader_daily_supports_bse_vipdoc(tmp_path):
     result = reader.daily(symbol='920493')
 
     assert not result.empty
+
+
+def test_reader_uses_convertible_bond_volume_unit_for_sh_bonds():
+    assert MooTdxDailyBarReader.SECURITY_COEFFICIENT['SH_BOND'] == [0.001, 0.1]

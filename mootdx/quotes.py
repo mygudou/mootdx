@@ -1,11 +1,16 @@
 import math
+import struct
+from collections import OrderedDict
 from datetime import datetime
 
 import pandas
 import pandas as pd
 from tdxpy.exceptions import ValidationException
 from tdxpy.exhq import TdxExHq_API
+from tdxpy.helper import get_price
+from tdxpy.helper import get_time
 from tdxpy.hq import TdxHq_API
+from tdxpy.parser.base import BaseParser
 from tdxpy.parser.std.get_company_info_category import GetCompanyInfoCategory
 from tdxpy.parser.std.get_company_info_content import GetCompanyInfoContent
 from tdxpy.parser.std.get_security_quotes import GetSecurityQuotesCmd
@@ -47,6 +52,51 @@ class Quotes(object):
             return ExtQuotes(**kwargs)
 
         return StdQuotes(**kwargs)
+
+
+class GetHistoryTransactionDataWithNum(BaseParser):
+    def setParams(self, market, code, start, count, date):
+        if isinstance(code, str):
+            code = code.encode('utf-8')
+
+        if isinstance(date, (str, bytes)):
+            date = int(date)
+
+        pkg = bytearray.fromhex('0c 01 30 02 02 01 12 00 12 00 c6 0f')
+        pkg.extend(struct.pack('<IH6sHH', date, market, code, start, count))
+
+        self.send_pkg = pkg
+
+    def parseResponse(self, body_buf):
+        pos = 0
+        (num,) = struct.unpack('<H', body_buf[:2])
+
+        pos += 2
+        pos += 4
+
+        ticks = []
+        last_price = 0
+
+        for _ in range(num):
+            hour, minute, pos = get_time(body_buf, pos)
+
+            price_raw, pos = get_price(body_buf, pos)
+            vol, pos = get_price(body_buf, pos)
+            num, pos = get_price(body_buf, pos)
+            buy_or_sell, pos = get_price(body_buf, pos)
+            _, pos = get_price(body_buf, pos)
+
+            last_price += price_raw
+
+            ticks.append(OrderedDict([
+                ('time', f'{hour:02d}:{minute:02d}'),
+                ('price', float(last_price) / 100),
+                ('vol', vol),
+                ('num', num),
+                ('buyorsell', buy_or_sell),
+            ]))
+
+        return ticks
 
 
 def valid_server(server):
@@ -430,11 +480,48 @@ class StdQuotes(BaseQuotes):
         :return: pd.dataFrame or None
         """
 
+        with_num = kwargs.pop('with_num', True)
         market = _pop_market(kwargs, symbol)
         code = normalize_stock_code(symbol)
 
-        result = self.client.get_history_transaction_data(market, code, start, offset, int(date))
+        if with_num:
+            result = self._call_command(GetHistoryTransactionDataWithNum, market, code, start, offset, int(date))
+        else:
+            result = self.client.get_history_transaction_data(market, code, start, offset, int(date))
+
         return to_data(result, symbol=code, client=self, **kwargs)
+
+    def transactions_all(self, symbol='', date='20170209', offset=1800, **kwargs):
+        """
+        查询指定日期尽可能完整的历史分笔成交
+
+        :param symbol:  股票代码
+        :param date:    查询日期
+        :param offset:  每次获取数量。带成交笔数协议实测单次最多返回 1800 条
+        :return: pd.dataFrame or None
+        """
+
+        start = int(kwargs.pop('start', 0))
+        offset = min(int(offset), 1800)
+        chunks = []
+
+        while True:
+            data = self.transactions(symbol=symbol, start=start, offset=offset, date=date, **kwargs)
+
+            if data.empty:
+                break
+
+            chunks.insert(0, data)
+            count = len(data)
+            start += count
+
+            if count < offset:
+                break
+
+        if not chunks:
+            return to_data(None)
+
+        return pandas.concat(chunks, ignore_index=True)
 
     def F10C(self, symbol=''):  # noqa
         """

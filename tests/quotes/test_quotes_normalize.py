@@ -1,5 +1,8 @@
+import pandas
+
 from mootdx.consts import MARKET_BJ
 from mootdx.consts import MARKET_SH
+from mootdx.quotes import GetHistoryTransactionDataWithNum
 from mootdx.quotes import StdQuotes
 
 
@@ -77,11 +80,41 @@ def test_minutes_allows_bse_market():
 
 def test_transactions_allows_bse_market():
     client = StdQuotes.__new__(StdQuotes)
-    client.client = _FakeClient()
+    calls = []
+    client._call_command = lambda command, *args: calls.append((command, args)) or []
 
     client.transactions(symbol='920493', start=1, offset=2, date='20260430')
 
+    assert calls == [(GetHistoryTransactionDataWithNum, (MARKET_BJ, '920493', 1, 2, 20260430))]
+
+
+def test_transactions_can_use_legacy_protocol_without_num():
+    client = StdQuotes.__new__(StdQuotes)
+    client.client = _FakeClient()
+
+    client.transactions(symbol='920493', start=1, offset=2, date='20260430', with_num=False)
+
     assert client.client.calls == [('transactions', (MARKET_BJ, '920493', 1, 2, 20260430))]
+
+
+def test_transactions_all_pages_until_short_chunk():
+    client = StdQuotes.__new__(StdQuotes)
+    calls = []
+
+    def transactions(**kwargs):
+        calls.append(kwargs['start'])
+        if kwargs['start'] == 0:
+            return pandas.DataFrame([{'time': '14:59'}])
+        if kwargs['start'] == 1:
+            return pandas.DataFrame([{'time': '14:58'}])
+        return pandas.DataFrame()
+
+    client.transactions = transactions
+
+    result = StdQuotes.transactions_all(client, symbol='000001', date='20260430', offset=1)
+
+    assert calls == [0, 1, 2]
+    assert result.time.tolist() == ['14:58', '14:59']
 
 
 def test_company_info_content_reads_large_text_in_chunks():

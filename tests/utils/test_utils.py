@@ -26,6 +26,7 @@ data = [
     ('000300.SS', MARKET_SH),
     ('000300.SH', MARKET_SH),
     ('000001.SZ', MARKET_SZ),
+    ('880008', MARKET_SH),
     ('900901', MARKET_SH),
 ]
 

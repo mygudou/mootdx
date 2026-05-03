@@ -56,8 +56,9 @@ def _stock_market_from_suffix(symbol=''):
 def get_stock_market(symbol='', string=False):
     """判断股票ID对应的证券市场匹配规则
 
-    ['50', '51', '60', '90', '110'] 为 sh
+    ['50', '51', '60', '88', '90', '110'] 为 sh
     ['00', '12'，'13', '18', '15', '16', '18', '20', '30', '39', '115'] 为 sz
+    ['43', '83', '87', '920'] 为 bj
     ['5', '6', '9'] 开头的为 sh， 其余为 sz
 
     :param string: False 返回市场ID，否则市场缩写名称
@@ -80,10 +81,10 @@ def get_stock_market(symbol='', string=False):
     elif suffix_market:
         market = suffix_market
 
-    elif code.startswith(('4', '8', '920')):
+    elif code.startswith(('43', '83', '87', '920')):
         market = 'bj'
 
-    elif code.startswith(('50', '51', '60', '68', '90', '110', '113', '132', '204')):
+    elif code.startswith(('50', '51', '60', '68', '88', '90', '110', '113', '132', '204')):
         market = 'sh'
 
     elif code.startswith(('00', '12', '13', '18', '15', '16', '18', '20', '30', '39', '115', '1318')):
@@ -91,9 +92,6 @@ def get_stock_market(symbol='', string=False):
 
     elif code.startswith(('5', '6', '9', '7')):
         market = 'sh'
-
-    elif code.startswith(('4', '8')):
-        market = 'bj'
 
     # logger.debug(f"market => {market}")
 

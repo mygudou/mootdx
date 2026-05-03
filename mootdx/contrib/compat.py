@@ -36,7 +36,7 @@ class MooTdxDailyBarReader(TdxDailyBarReader):
         'SH_STAR_STOCK': [0.01, 0.01],
         'SH_INDEX': [0.01, 1.0],
         'SH_FUND': [0.001, 1.0],
-        'SH_BOND': [0.001, 1.0],
+        'SH_BOND': [0.001, 0.1],
         'SZ_A_STOCK': [0.01, 0.01],
         'SZ_B_STOCK': [0.01, 0.01],
         'SZ_INDEX': [0.01, 1.0],
