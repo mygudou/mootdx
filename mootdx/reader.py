@@ -153,6 +153,32 @@ class StdReader(ReaderBase):
 
         return reader.search(name=name, group=group)
 
+    def stock_list(self, market='all'):
+        """
+        读取本地通达信证券基础信息
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).stock_list(market=market)
+
+    def stock_search(self, keyword, market='all', exact=False):
+        """
+        搜索本地通达信证券基础信息
+
+        :param keyword: 代码或名称关键字
+        :param market: sh/sz/all，或市场列表
+        :param exact: 是否精确匹配代码或名称
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).stock_search(keyword=keyword, market=market, exact=exact)
+
     def watchlist(self, filename='zxg.blk'):
         """
         读取通达信自选股列表

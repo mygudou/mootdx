@@ -65,3 +65,26 @@ def test_block_files_lists_available_hq_cache_blocks(reader):
 
     assert 'block_gn.dat' in result.filename.tolist()
     assert 'gn' in result.name.tolist()
+
+
+def test_stock_list_reads_tnf_security_names(reader):
+    result = reader.stock_list(market='sz')
+    row = result[result.code == '000001'].iloc[0]
+
+    assert row.to_dict() == {'market': 'sz', 'code': '000001', 'name': '平安银行'}
+
+
+def test_stock_search_reads_tnf_by_code(reader):
+    result = reader.stock_search('600036', market='sh', exact=True)
+
+    assert result[['market', 'code', 'name']].to_dict('records') == [
+        {'market': 'sh', 'code': '600036', 'name': '招商银行'},
+    ]
+
+
+def test_stock_search_reads_tnf_by_name(reader):
+    result = reader.stock_search('招商银行', market='sh')
+
+    assert {'market': 'sh', 'code': '600036', 'name': '招商银行'} in (
+        result[['market', 'code', 'name']].to_dict('records')
+    )

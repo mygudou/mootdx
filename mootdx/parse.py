@@ -20,6 +20,13 @@ BLOCK_ALIASES = {
     'uk': 'ukblock.dat',
 }
 
+TNF_HEADER_SIZE = 50
+TNF_RECORD_SIZE = 314
+
+
+def _decode_cstr(data):
+    return data.split(b'\x00', 1)[0].decode('gbk', 'ignore').strip()
+
 
 class BaseParse:
     def __init__(self, tdxdir):  # noqa
@@ -42,6 +49,91 @@ class BaseParse:
                 rows.append({'name': name, 'filename': filename, 'path': str(path)})
 
         return pd.DataFrame(rows, columns=['name', 'filename', 'path'])
+
+    def stock_list(self, market='all'):
+        """
+        读取通达信本地证券基础信息文件 shm.tnf、szm.tnf
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame(columns=['market', 'code', 'name'])
+        """
+
+        hq_cache = Path(self.tdxdir, 'T0002', 'hq_cache')
+        markets = ['sh', 'sz'] if market in [None, 'all'] else market
+        markets = markets if isinstance(markets, (list, tuple, set)) else [markets]
+        result = []
+
+        for item in markets:
+            item = str(item).lower()
+            filename = hq_cache / f'{item}m.tnf'
+
+            if not filename.exists():
+                continue
+
+            result.append(self.tnf(filename, market=item))
+
+        if not result:
+            return pd.DataFrame(columns=['market', 'code', 'name'])
+
+        return pd.concat(result, ignore_index=True)
+
+    def stock_search(self, keyword, market='all', exact=False):
+        """
+        从通达信本地证券基础信息中搜索代码或名称
+
+        :param keyword: 代码或名称关键字
+        :param market: sh/sz/all，或市场列表
+        :param exact: 是否精确匹配代码或名称
+        :return: pd.DataFrame
+        """
+
+        data = self.stock_list(market=market)
+
+        if data.empty:
+            return data
+
+        keyword = str(keyword)
+
+        if exact:
+            return data[(data.code == keyword) | (data.name == keyword)].reset_index(drop=True)
+
+        matched = data.code.str.contains(keyword, regex=False) | data.name.str.contains(
+            keyword,
+            regex=False,
+        )
+        return data[matched].reset_index(drop=True)
+
+    def tnf(self, filename, market=None):
+        """
+        解析通达信 shm.tnf / szm.tnf 证券基础信息文件
+
+        :param filename: tnf 文件路径
+        :param market: sh/sz，默认从文件名推断
+        :return: pd.DataFrame
+        """
+
+        path = Path(filename)
+        market = market or path.stem[:2].lower()
+        data = path.read_bytes()
+        rows = []
+
+        for offset in range(TNF_HEADER_SIZE, len(data), TNF_RECORD_SIZE):
+            record = data[offset:offset + TNF_RECORD_SIZE]
+
+            if len(record) < 64:
+                continue
+
+            code = _decode_cstr(record[0:6])
+            name = _decode_cstr(record[23:63])
+
+            if not code or not code.isdigit() or not name:
+                continue
+
+            rows.append({'market': market, 'code': code, 'name': name})
+
+        return pd.DataFrame(rows, columns=['market', 'code', 'name']).drop_duplicates(
+            ignore_index=True,
+        )
 
     def blocks(self, name='gn', group=False):
         """

@@ -30,6 +30,7 @@
 - 修复 `88xxxx` 通达信板块/自定义指数被误判为北交所的问题，例如 `880008` 全 A 等权。
 - 新增本地自选股 `zxg.blk` 读取能力。
 - 新增本地 `T0002/hq_cache` 板块别名入口，例如 `reader.blocks("gn")` 读取概念板块。
+- 新增本地 `T0002/hq_cache/shm.tnf`、`szm.tnf` 证券基础信息读取和搜索。
 - 新增本地 `vipdoc/cw/gpsh*.dat`、`gpsz*.dat` 财务文件读取。
 - CSV/Excel/JSON 等导出会保留日线/分钟线的时间索引。
 - 修复命令行 `quotes` / `bundle` 的周期参数映射。
@@ -77,6 +78,7 @@
 | 沪深全市场实时行情 | 支持 | `quotes_all(market=[0, 1])` 分批拉取 |
 | 本地自选股 | 支持 | `Reader.watchlist()` 读取 `T0002/blocknew/zxg.blk` |
 | 本地板块文件 | 支持 | `Reader.blocks("gn")` / `Reader.block_files()` |
+| 本地证券基础信息 | 支持 | `Reader.stock_list()` / `Reader.stock_search()` 读取 `shm.tnf`、`szm.tnf` |
 | 本地 cw 财务文件 | 支持 | `Reader.financial()` / `Reader.cw()` |
 
 北交所涨跌幅 `30%`、主板/创业板/科创板涨跌幅等交易制度没有写进本库，因为
@@ -194,6 +196,10 @@ watchlist = reader.watchlist()
 concept_blocks = reader.blocks("gn", group=True)
 available_blocks = reader.block_files()
 
+# 本地证券基础信息，读取 T0002/hq_cache/shm.tnf、szm.tnf
+stocks = reader.stock_list(market="all")
+matches = reader.stock_search("600036", market="sh", exact=True)
+
 # 本地财务文件，读取 vipdoc/cw/gpsh*.dat 或 gpsz*.dat
 local_finance = reader.financial(market="sh")
 ```
@@ -229,7 +235,7 @@ pytest -q
 
 - 标准行情：补齐指数、债券、基金、ETF、北交所、新三板等代码类型和字段含义。
 - 扩展行情：持续验证期货、期权、港股、外盘等市场，区分协议能力和服务器权限。
-- 本地文件：继续补齐扩展数据管理器 `.dat/.idx`、`.tnf`、`.tdf`、`.tfz` 等解析。
+- 本地文件：继续补齐扩展数据管理器 `.dat/.idx`、`.tdf`、`.tfz` 等解析，并完善 `.tnf` 字段含义。
 - 板块体系：继续整理行业、概念、地域、自定义板块、自选股的字段和对表测试。
 - F10/财务：补齐长文本、财报文件、字段字典和异常数据校验。
 - 与通达信客户端对表：对典型股票、指数、债券、ETF、期货样本做持续回归测试。
