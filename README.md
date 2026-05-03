@@ -104,6 +104,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 | 证券基础信息 | `stock_list()` | 支持 | `T0002/hq_cache/shm.tnf`、`szm.tnf` |
 | 证券搜索 | `stock_search()` | 支持 | 支持代码/名称模糊搜索和精确搜索 |
 | 期货/期权合约规则 | `contracts()` | 支持 | `code2name.ini`、`code2name_qq.ini` |
+| hq_cache 文本目录 | `hq_cache()` | 支持 | 概念、行业、指数、ADR、北交所等本地配置 |
 | 本地财务文件 | `financial()` / `cw()` | 支持 | `vipdoc/cw/gpsh*.dat`、`gpsz*.dat` |
 
 ### 本地扩展市场 Reader `Reader.factory(market="ext")`
@@ -151,7 +152,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 - 北交所 F10 暂不支持；底层公司信息目录直接返回空。
 - 扩展市场依赖通达信扩展行情服务器和账号权限，不同服务器返回能力可能不同。
 - 本地 `.tnf` 已支持基础字段；更多隐藏字段语义还在对表中。
-- 本地 `.tdf`、`.tfz`、`.tcu`、扩展数据管理器 `.dat/.idx` 还没有完整解析。
+- 本地 `hq_cache` 文本配置已支持常见目录；二进制 `.tdf`、`.tfz`、`.tcu`、扩展数据管理器 `.dat/.idx` 还没有完整解析。
 - 北交所涨跌幅 `30%`、主板/创业板/科创板涨跌幅等交易制度没有写进本库；`mootdx` 是行情读取库，不做下单撮合，也不自己计算涨停价和跌停价。
 
 为什么使用这个 fork
@@ -178,6 +179,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 - 新增本地 `T0002/hq_cache` 板块别名入口。
 - 新增本地 `shm.tnf`、`szm.tnf` 证券基础信息读取和搜索。
 - 新增本地 `code2name.ini`、`code2name_qq.ini` 扩展市场合约规则读取。
+- 新增本地 `hq_cache` 文本配置读取，覆盖概念、行业、指数、ADR、北交所等目录。
 - 新增本地 `vipdoc/cw/gpsh*.dat`、`gpsz*.dat` 财务文件读取。
 - CSV/Excel/JSON 等导出会保留日线/分钟线的时间索引。
 - 修复命令行 `quotes` / `bundle` 的周期参数映射。
@@ -284,6 +286,10 @@ matches = reader.stock_search("600036", market="sh", exact=True)
 
 futures = reader.contracts(kind="future")
 options = reader.contracts(kind="option")
+
+concepts = reader.hq_cache("concept")
+industries = reader.hq_cache("industry")
+adr = reader.hq_cache("adr")
 
 local_finance = reader.financial(market="sh")
 ```

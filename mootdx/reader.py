@@ -191,6 +191,19 @@ class StdReader(ReaderBase):
 
         return BaseParse(self.tdxdir).contracts(kind=kind)
 
+    def hq_cache(self, name='concept', columns=None):
+        """
+        读取本地通达信 T0002/hq_cache 文本配置
+
+        :param name: concept/industry/index/adr 等别名，或完整文件名
+        :param columns: 自定义列名
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).hq_cache(name=name, columns=columns)
+
     def watchlist(self, filename='zxg.blk'):
         """
         读取通达信自选股列表

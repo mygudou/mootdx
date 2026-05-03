@@ -116,3 +116,39 @@ def test_contracts_reads_local_option_rules(reader):
         'price_tick': '0.5000',
         'unit': '吨',
     }
+
+
+def test_hq_cache_reads_local_concept_catalog(reader):
+    result = reader.hq_cache('concept')
+    row = result.iloc[0]
+
+    assert row.to_dict() == {
+        'category': '1',
+        'name': '有机硅',
+        'full_name': '有机硅概念',
+        'flag': '0',
+    }
+
+
+def test_hq_cache_reads_local_industry_catalog(reader):
+    result = reader.hq_cache('industry')
+    row = result[result.code == '000001'].iloc[0]
+
+    assert row[['market', 'code', 'tdx_industry', 'sw_industry']].to_dict() == {
+        'market': '0',
+        'code': '000001',
+        'tdx_industry': 'T1001',
+        'sw_industry': 'X500102',
+    }
+
+
+def test_hq_cache_reads_local_adr_catalog(reader):
+    result = reader.hq_cache('adr')
+    row = result.iloc[0]
+
+    assert row.to_dict() == {
+        'name': '阿里巴巴-SW',
+        'hk_code': '09988',
+        'adr_code': 'BABA',
+        'ratio': '8',
+    }

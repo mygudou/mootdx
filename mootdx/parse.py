@@ -46,6 +46,40 @@ CONTRACT_COLUMNS = [
     'description',
 ]
 
+HQ_CACHE_ALIASES = {
+    'concept': 'tdxbk.cfg',
+    'concepts': 'tdxbk.cfg',
+    'bk': 'tdxbk.cfg',
+    'industry': 'tdxhy.cfg',
+    'industries': 'tdxhy.cfg',
+    'hy': 'tdxhy.cfg',
+    'index': 'tdxzs.cfg',
+    'indices': 'tdxzs.cfg',
+    'zs': 'tdxzs.cfg',
+    'index3': 'tdxzs3.cfg',
+    'zs3': 'tdxzs3.cfg',
+    'neeq_index': 'tdxsbzs.cfg',
+    'sbzs': 'tdxsbzs.cfg',
+    'hk_index': 'tdxdszs.cfg',
+    'adr': 'tdxadr.cfg',
+    'bse_more': 'tdxbjmore.cfg',
+    'bj_more': 'tdxbjmore.cfg',
+    'us_stock': 'tdxmgag.cfg',
+    'mgag': 'tdxmgag.cfg',
+}
+
+HQ_CACHE_COLUMNS = {
+    'tdxbk.cfg': ['category', 'name', 'full_name', 'flag'],
+    'tdxhy.cfg': ['market', 'code', 'tdx_industry', 'reserved1', 'reserved2', 'sw_industry'],
+    'tdxzs.cfg': ['name', 'code', 'category', 'type', 'market', 'alias'],
+    'tdxzs3.cfg': ['name', 'code', 'category', 'type', 'market', 'alias'],
+    'tdxdszs.cfg': ['name', 'code', 'market', 'category', 'type', 'alias'],
+    'tdxsbzs.cfg': ['code', 'name'],
+    'tdxadr.cfg': ['name', 'hk_code', 'adr_code', 'ratio'],
+    'tdxbjmore.cfg': ['market', 'code', 'market_id', 'name', 'reserved'],
+    'tdxmgag.cfg': ['code', 'name', 'industry', 'concept', 'reserved'],
+}
+
 TNF_HEADER_SIZE = 50
 TNF_RECORD_SIZE = 314
 
@@ -67,6 +101,30 @@ def _read_gbk_csv(path, columns):
         rows.append(dict(zip(columns, parts[:len(columns)])))
 
     return pd.DataFrame(rows, columns=columns)
+
+
+def _read_gbk_pipe(path, columns=None):
+    rows = []
+
+    for line in Path(path).read_text(encoding='gbk', errors='ignore').splitlines():
+        if not line.strip():
+            continue
+
+        rows.append([item.strip() for item in line.split('|')])
+
+    if not rows:
+        return pd.DataFrame(columns=columns)
+
+    width = max(len(row) for row in rows)
+    for row in rows:
+        row.extend([''] * (width - len(row)))
+
+    if columns is None:
+        columns = [f'col{i}' for i in range(width)]
+    elif len(columns) < width:
+        columns = columns + [f'col{i}' for i in range(len(columns), width)]
+
+    return pd.DataFrame(rows, columns=columns[:width])
 
 
 class BaseParse:
@@ -159,6 +217,27 @@ class BaseParse:
             return pd.DataFrame(columns=CONTRACT_COLUMNS)
 
         return _read_gbk_csv(path, CONTRACT_COLUMNS)
+
+    def hq_cache(self, name='concept', columns=None):
+        """
+        读取通达信 T0002/hq_cache 下常见文本配置文件
+
+        :param name: concept/industry/index/adr 等别名，或完整文件名
+        :param columns: 自定义列名；为空时对已知文件使用内置列名
+        :return: pd.DataFrame
+        """
+
+        filename = HQ_CACHE_ALIASES.get(str(name).lower(), name)
+        filename = filename if Path(filename).suffix else f'{filename}.cfg'
+        path = Path(self.tdxdir, 'T0002', 'hq_cache', filename)
+
+        if columns is None:
+            columns = HQ_CACHE_COLUMNS.get(filename)
+
+        if not path.exists():
+            return pd.DataFrame(columns=columns)
+
+        return _read_gbk_pipe(path, columns=columns)
 
     def tnf(self, filename, market=None):
         """
