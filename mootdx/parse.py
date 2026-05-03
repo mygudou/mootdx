@@ -20,12 +20,53 @@ BLOCK_ALIASES = {
     'uk': 'ukblock.dat',
 }
 
+CONTRACT_FILES = {
+    'future': 'code2name.ini',
+    'futures': 'code2name.ini',
+    'option': 'code2name_qq.ini',
+    'options': 'code2name_qq.ini',
+}
+
+CONTRACT_COLUMNS = [
+    'code',
+    'name',
+    'exchange',
+    'category',
+    'main_contract',
+    'main_contract_date',
+    'contract_unit',
+    'price_tick',
+    'limit_up',
+    'limit_down',
+    'fee',
+    'fee_unit',
+    'unit',
+    'rule_code',
+    'rule_value',
+    'description',
+]
+
 TNF_HEADER_SIZE = 50
 TNF_RECORD_SIZE = 314
 
 
 def _decode_cstr(data):
     return data.split(b'\x00', 1)[0].decode('gbk', 'ignore').strip()
+
+
+def _read_gbk_csv(path, columns):
+    rows = []
+    maxsplit = len(columns) - 1
+
+    for line in Path(path).read_text(encoding='gbk', errors='ignore').splitlines():
+        if not line.strip():
+            continue
+
+        parts = [item.strip() for item in line.split(',', maxsplit)]
+        parts.extend([''] * (len(columns) - len(parts)))
+        rows.append(dict(zip(columns, parts[:len(columns)])))
+
+    return pd.DataFrame(rows, columns=columns)
 
 
 class BaseParse:
@@ -102,6 +143,22 @@ class BaseParse:
             regex=False,
         )
         return data[matched].reset_index(drop=True)
+
+    def contracts(self, kind='future'):
+        """
+        读取通达信本地扩展市场合约规则文件 code2name.ini / code2name_qq.ini
+
+        :param kind: future/futures 或 option/options，也可以直接传文件名
+        :return: pd.DataFrame
+        """
+
+        filename = CONTRACT_FILES.get(str(kind).lower(), kind)
+        path = Path(self.tdxdir, 'T0002', 'hq_cache', filename)
+
+        if not path.exists():
+            return pd.DataFrame(columns=CONTRACT_COLUMNS)
+
+        return _read_gbk_csv(path, CONTRACT_COLUMNS)
 
     def tnf(self, filename, market=None):
         """

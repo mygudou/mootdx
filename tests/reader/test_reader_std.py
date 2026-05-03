@@ -88,3 +88,31 @@ def test_stock_search_reads_tnf_by_name(reader):
     assert {'market': 'sh', 'code': '600036', 'name': '招商银行'} in (
         result[['market', 'code', 'name']].to_dict('records')
     )
+
+
+def test_contracts_reads_local_future_rules(reader):
+    result = reader.contracts(kind='future')
+    row = result[result.code == 'IF'].iloc[0]
+
+    assert row[['code', 'name', 'exchange', 'contract_unit', 'price_tick', 'unit']].to_dict() == {
+        'code': 'IF',
+        'name': '沪深',
+        'exchange': 'CZ',
+        'contract_unit': '300',
+        'price_tick': '0.2000',
+        'unit': '元',
+    }
+
+
+def test_contracts_reads_local_option_rules(reader):
+    result = reader.contracts(kind='option')
+    row = result[result.code == 'C'].iloc[0]
+
+    assert row[['code', 'name', 'exchange', 'contract_unit', 'price_tick', 'unit']].to_dict() == {
+        'code': 'C',
+        'name': '玉米',
+        'exchange': 'OD',
+        'contract_unit': '10',
+        'price_tick': '0.5000',
+        'unit': '吨',
+    }

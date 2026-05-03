@@ -179,6 +179,18 @@ class StdReader(ReaderBase):
 
         return BaseParse(self.tdxdir).stock_search(keyword=keyword, market=market, exact=exact)
 
+    def contracts(self, kind='future'):
+        """
+        读取本地通达信扩展市场合约规则
+
+        :param kind: future/futures 或 option/options，也可以直接传文件名
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).contracts(kind=kind)
+
     def watchlist(self, filename='zxg.blk'):
         """
         读取通达信自选股列表
