@@ -30,7 +30,6 @@ from mootdx.logger import logger
 from mootdx.server import check_server
 from mootdx.utils import get_frequency
 from mootdx.utils import get_stock_market
-from mootdx.utils import get_stock_markets
 from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
 
@@ -148,6 +147,23 @@ def _pop_market(kwargs, symbol, *, index=False):
         return _index_market(symbol)
 
     return int(get_stock_market(symbol))
+
+
+def _quote_symbols(symbols):
+    if isinstance(symbols, tuple) and len(symbols) == 2 and isinstance(symbols[0], int):
+        symbols = [symbols]
+    elif not isinstance(symbols, list):
+        symbols = [symbols]
+
+    result = []
+    for symbol in symbols:
+        if isinstance(symbol, (list, tuple)) and len(symbol) == 2 and isinstance(symbol[0], int):
+            market, code = symbol
+            result.append([int(market), normalize_stock_code(code)])
+        else:
+            result.append([get_stock_market(symbol, string=False), normalize_stock_code(symbol)])
+
+    return result
 
 
 class BaseQuotes(object):
@@ -313,16 +329,55 @@ class StdQuotes(BaseQuotes):
         if not symbol:
             return to_data(None)
 
-        if type(symbol) is str:
-            symbol = [symbol]
-
         try:
-            symbol = get_stock_markets(symbol)
+            symbol = _quote_symbols(symbol)
             result = self._call_command(GetSecurityQuotesCmd, symbol)
         except ValidationException:
             return to_data(None)
 
         return to_data(result, symbol=symbol, client=self, **kwargs)
+
+    def quotes_batch(self, symbol=None, batch_size=80, **kwargs):
+        """
+        批量获取实时行情
+
+        :param symbol: 股票代码列表，或已解析好的 [(market, code)] 列表
+        :param batch_size: 单次请求数量
+        :return: pd.DataFrame
+        """
+
+        if not symbol:
+            return to_data(None)
+
+        symbols = _quote_symbols(symbol)
+        result = []
+
+        for start in range(0, len(symbols), int(batch_size)):
+            data = self.quotes(symbol=symbols[start:start + int(batch_size)], **kwargs)
+            if not data.empty:
+                result.append(data)
+
+        return pandas.concat(result, ignore_index=True) if result else to_data(None)
+
+    def quotes_all(self, market=None, batch_size=80, **kwargs):
+        """
+        获取沪深市场全部证券的实时行情
+
+        :param market: 市场代码，默认 [0, 1]
+        :param batch_size: 单次请求数量
+        :return: pd.DataFrame
+        """
+
+        markets = [MARKET_SZ, MARKET_SH] if market is None else market
+        markets = markets if isinstance(markets, (list, tuple, set)) else [markets]
+        symbols = []
+
+        for item in markets:
+            stocks = self.stocks(int(item))
+            if not stocks.empty:
+                symbols.extend([[int(item), code] for code in stocks.code.tolist()])
+
+        return self.quotes_batch(symbol=symbols, batch_size=batch_size, **kwargs)
 
     def bars(self, symbol='000001', frequency=9, start=0, offset=800, **kwargs):
         """

@@ -2,12 +2,14 @@ import time
 from datetime import datetime
 from pathlib import Path
 
+import pandas as pd
 from tdxpy.reader import CustomerBlockReader
 
 from mootdx.consts import TYPE_FLATS
 from mootdx.consts import TYPE_GROUP
 from mootdx.logger import logger
 from mootdx.utils import get_stock_market
+from mootdx.utils import normalize_stock_code
 
 try:
     from time import time_ns
@@ -139,6 +141,46 @@ class Customize:
         logger.debug(f'写入文件 : {block_file}')
 
         return block_file.write_text(block_code, encoding='gb2312')
+
+    def read_blk(self, filename='zxg.blk'):
+        """
+        读取通达信 blocknew 目录下的 .blk 证券列表文件
+
+        :param filename: blk 文件名，默认 zxg.blk
+        :return: pd.DataFrame(columns=['market', 'code'])
+        """
+
+        filename = filename if str(filename).endswith('.blk') else f'{filename}.blk'
+        block_file = Path(self.vipdoc, filename)
+
+        if not block_file.exists():
+            return pd.DataFrame(columns=['market', 'code'])
+
+        rows = []
+        text = block_file.read_text(encoding='gb2312', errors='ignore')
+
+        for line in text.replace(',', '\n').splitlines():
+            item = line.strip()
+
+            if not item:
+                continue
+
+            if len(item) >= 7 and item[0] in ['0', '1', '2'] and item[1:7].isdigit():
+                rows.append({'market': int(item[0]), 'code': item[1:7]})
+            else:
+                rows.append({'market': get_stock_market(item), 'code': normalize_stock_code(item)})
+
+        return pd.DataFrame(rows, columns=['market', 'code']).drop_duplicates(ignore_index=True)
+
+    def watchlist(self, filename='zxg.blk'):
+        """
+        读取通达信自选股列表
+
+        :param filename: 自选股 blk 文件名，默认 zxg.blk
+        :return: pd.DataFrame(columns=['market', 'code'])
+        """
+
+        return self.read_blk(filename=filename)
 
 
 def _blocknew(tdxdir: str = None, name: str = None, symbol: list = None, blk_file: str = None, **kwargs):  # noqa

@@ -227,6 +227,9 @@ def to_file(df, filename=None):
     if filename is None or df is None:
         return None
 
+    if isinstance(df, pd.DataFrame) and df.index.name and df.index.name not in df.columns:
+        df = df.reset_index()
+
     path_name = Path(filename).parent
     extension = Path(filename).suffix
 

@@ -153,6 +153,18 @@ class StdReader(ReaderBase):
 
         return reader.search(name=name, group=group)
 
+    def watchlist(self, filename='zxg.blk'):
+        """
+        读取通达信自选股列表
+
+        :param filename: 自选股 blk 文件名，默认 zxg.blk
+        :return: pd.DataFrame
+        """
+
+        from mootdx.tools.customize import Customize
+
+        return Customize(tdxdir=self.tdxdir).watchlist(filename=filename)
+
     def block(self, symbol='', group=False, **kwargs):
         """
         获取板块数据

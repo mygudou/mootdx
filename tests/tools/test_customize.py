@@ -7,6 +7,10 @@ from pathlib import Path
 import pytest
 
 from mootdx.logger import logger
+from mootdx.consts import MARKET_BJ
+from mootdx.consts import MARKET_SH
+from mootdx.consts import MARKET_SZ
+from mootdx.reader import Reader
 from mootdx.tools.customize import Customize
 
 tdxdir = 'tests/fixtures'
@@ -69,3 +73,25 @@ def test_block_search(custom):
 def test_block_remove(custom):
     assert custom.remove(name='优质股')
     assert custom.search(name='优质股') is None
+
+
+def test_watchlist_reads_zxg_blk(custom):
+    watchlist = Path(tdxdir, 'T0002', 'blocknew', 'zxg.blk')
+    watchlist.write_text('1600036\n0000001\nbj920493\n', encoding='gb2312')
+
+    result = custom.watchlist()
+
+    assert result.to_dict('records') == [
+        {'market': MARKET_SH, 'code': '600036'},
+        {'market': MARKET_SZ, 'code': '000001'},
+        {'market': MARKET_BJ, 'code': '920493'},
+    ]
+
+
+def test_reader_watchlist_reads_zxg_blk(custom):
+    watchlist = Path(tdxdir, 'T0002', 'blocknew', 'zxg.blk')
+    watchlist.write_text('1600036\n', encoding='gb2312')
+
+    reader = Reader.factory(market='std', tdxdir=tdxdir)
+
+    assert reader.watchlist().to_dict('records') == [{'market': MARKET_SH, 'code': '600036'}]

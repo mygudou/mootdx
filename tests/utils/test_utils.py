@@ -1,6 +1,7 @@
 import unittest
 from unittest import mock
 
+import pandas
 import pytest
 
 from mootdx import config
@@ -13,6 +14,7 @@ from mootdx.utils import get_stock_markets
 from mootdx.utils import md5sum
 from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
+from mootdx.utils import to_file
 
 data = [
     ('600036', MARKET_SH),
@@ -113,6 +115,19 @@ class TestToData(unittest.TestCase):
         ])
 
         self.assertEqual(result.close.tolist(), [1])
+
+
+def test_to_file_preserves_named_datetime_index(tmp_path):
+    path = tmp_path / 'minute.csv'
+    data = pandas.DataFrame({'close': [1]}, index=pandas.to_datetime(['2026-04-30 09:31:00']))
+    data.index.name = 'date'
+
+    to_file(data, path)
+
+    assert path.read_text().splitlines() == [
+        'date,close',
+        '2026-04-30 09:31:00,1',
+    ]
 
 
 class TestConfigPath(unittest.TestCase):

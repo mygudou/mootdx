@@ -2,6 +2,7 @@ import pandas
 
 from mootdx.consts import MARKET_BJ
 from mootdx.consts import MARKET_SH
+from mootdx.consts import MARKET_SZ
 from mootdx.quotes import GetHistoryTransactionDataWithNum
 from mootdx.quotes import StdQuotes
 
@@ -54,6 +55,64 @@ def test_quotes_uses_raw_command_so_bse_quotes_are_not_blocked():
     result = client.quotes('920493')
 
     assert result.to_dict('records') == [{'market': MARKET_BJ, 'code': '920493', 'price': 10.0}]
+
+
+def test_quotes_accepts_preparsed_market_code_pairs():
+    client = StdQuotes.__new__(StdQuotes)
+    calls = []
+
+    def call_command(command, symbols):
+        calls.append(symbols)
+        return [{'market': MARKET_SH, 'code': '600036', 'price': 1.0}]
+
+    client._call_command = call_command
+
+    result = client.quotes([(MARKET_SH, '600036')])
+
+    assert calls == [[[MARKET_SH, '600036']]]
+    assert result.to_dict('records') == [{'market': MARKET_SH, 'code': '600036', 'price': 1.0}]
+
+
+def test_quotes_batch_splits_large_requests():
+    client = StdQuotes.__new__(StdQuotes)
+    calls = []
+
+    def call_command(command, symbols):
+        calls.append(symbols)
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(['600036', '000001', '920493'], batch_size=2)
+
+    assert calls == [
+        [[MARKET_SH, '600036'], [MARKET_SZ, '000001']],
+        [[MARKET_BJ, '920493']],
+    ]
+    assert result.code.tolist() == ['600036', '000001', '920493']
+
+
+def test_quotes_all_uses_stock_lists_and_batches_quotes():
+    client = StdQuotes.__new__(StdQuotes)
+    calls = []
+
+    def stocks(market):
+        return pandas.DataFrame({'code': ['000001'] if market == MARKET_SZ else ['600036']})
+
+    def quotes_batch(symbol, batch_size=80, **kwargs):
+        calls.append((symbol, batch_size))
+        return pandas.DataFrame(symbol, columns=['market', 'code'])
+
+    client.stocks = stocks
+    client.quotes_batch = quotes_batch
+
+    result = StdQuotes.quotes_all(client, batch_size=10)
+
+    assert calls == [([[MARKET_SZ, '000001'], [MARKET_SH, '600036']], 10)]
+    assert result.to_dict('records') == [
+        {'market': MARKET_SZ, 'code': '000001'},
+        {'market': MARKET_SH, 'code': '600036'},
+    ]
 
 
 def test_minutes_accepts_explicit_market_override_for_indices():

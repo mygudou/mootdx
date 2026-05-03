@@ -25,7 +25,11 @@
 - 本地通达信 `vipdoc/bj` 北交所日线文件可读取。
 - 修复 F10 长文本被截断的问题，按通达信返回长度分块读取。
 - 历史分笔成交默认返回 `num` 成交笔数，并新增 `transactions_all` 拉取尽可能完整的全天分笔。
+- 新增 `quotes_batch` / `quotes_all`，支持批量实时行情和沪深全市场实时行情。
+- 支持直接传入 `(market, code)` 查询，方便精确复刻通达信市场归属。
 - 修复 `88xxxx` 通达信板块/自定义指数被误判为北交所的问题，例如 `880008` 全 A 等权。
+- 新增本地自选股 `zxg.blk` 读取能力。
+- CSV/Excel/JSON 等导出会保留日线/分钟线的时间索引。
 - 修复上交所可转债本地日线成交量单位偏大 10 倍的问题。
 - 更新可用行情服务器，并增加标准市场、扩展市场服务器 fallback。
 - 修复 `BESTIP.HQ` 为空导致 `ValueError: not enough values to unpack` 的问题。
@@ -66,6 +70,9 @@
 | 扩展市场 | 部分支持 | `markets` / `instrument` 实测可用，具体品种依赖通达信服务器 |
 | 历史分笔成交笔数 | 支持 | 新协议返回 `num` 字段，单次带 `num` 实测最多 1800 条 |
 | 通达信 88 指数 | 支持 | `client.index("880008")` / `client.quotes(["880008"])` 可用 |
+| 批量实时行情 | 支持 | `quotes_batch` 支持代码列表和 `(market, code)` 列表 |
+| 沪深全市场实时行情 | 支持 | `quotes_all(market=[0, 1])` 分批拉取 |
+| 本地自选股 | 支持 | `Reader.watchlist()` 读取 `T0002/blocknew/zxg.blk` |
 
 北交所涨跌幅 `30%`、主板/创业板/科创板涨跌幅等交易制度没有写进本库，因为
 `mootdx` 是行情读取库，不做下单撮合，也不自己计算涨停价和跌停价。已扫描代码，
@@ -118,6 +125,12 @@ bse_daily = client.bars(symbol="920493", frequency="day", offset=10)
 # 北交所实时行情和五档报价
 quote = client.quotes(["920493"])
 
+# 批量实时行情，可混合沪深、通达信指数、北交所
+quotes = client.quotes_batch([(1, "600036"), (0, "000001"), (1, "880008"), (2, "920493")])
+
+# 沪深全市场实时行情，会先读取证券列表，再分批取行情
+all_quotes = client.quotes_all(market=[0, 1])
+
 # 北交所历史分钟线
 minutes = client.minutes(symbol="920493", date="20260430")
 
@@ -168,6 +181,9 @@ bse_daily = reader.daily(symbol="920493")
 # 1 分钟 / 5 分钟
 minute_1 = reader.minute(symbol="600036", suffix=1)
 minute_5 = reader.minute(symbol="600036", suffix=5)
+
+# 本地自选股，读取 T0002/blocknew/zxg.blk
+watchlist = reader.watchlist()
 ```
 
 ### 扩展市场
