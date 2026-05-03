@@ -1,3 +1,4 @@
+import builtins
 import copy
 import json
 from pathlib import Path
@@ -9,7 +10,9 @@ from mootdx.logger import logger
 from mootdx.server import bestip
 from mootdx.utils import get_config_path
 
-__all__ = ['set', 'get', 'copy', 'update', 'settings']
+__all__ = ['set', 'get', 'get_server', 'get_servers', 'set_bestip', 'copy', 'update', 'settings']
+
+DEFAULT_SERVERS = {'HQ': HQ_HOSTS, 'EX': EX_HOSTS, 'GP': GP_HOSTS}
 
 settings = {
     'SERVER': {'HQ': HQ_HOSTS, 'EX': EX_HOSTS, 'GP': GP_HOSTS},
@@ -89,6 +92,60 @@ def get(key, default=None):
                 break
 
     return cfg
+
+
+def normalize_server(server):
+    if not server:
+        return None
+    if not isinstance(server, (tuple, list)):
+        return None
+
+    values = list(server)
+    if len(values) == 3:
+        values = values[1:]
+    if len(values) != 2:
+        return None
+
+    address, port = values
+    if not address or not port:
+        return None
+
+    try:
+        return str(address), int(port)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_servers(index, default=None):
+    bestip = (settings.get('BESTIP') or {}).get(index)
+    configured = (settings.get('SERVER') or {}).get(index) or []
+    builtin = DEFAULT_SERVERS.get(index) or []
+
+    results = []
+    seen = builtins.set()
+    for candidate in [bestip, default, *builtin, *configured]:
+        server = normalize_server(candidate)
+        if server and server not in seen:
+            seen.add(server)
+            results.append(server)
+
+    return results
+
+
+def get_server(index, default=None):
+    servers = get_servers(index, default=default)
+    return servers[0] if servers else None
+
+
+def set_bestip(index, server):
+    server = normalize_server(server)
+    if not server:
+        raise ValueError('Server 格式错误. 例如: server = ("127.0.0.1", 7709)')
+
+    bestip = dict(settings.get('BESTIP') or {})
+    bestip[index] = server
+    settings['BESTIP'] = bestip
+    return server
 
 
 def path(key, value=None):

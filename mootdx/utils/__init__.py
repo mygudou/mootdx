@@ -31,8 +31,26 @@ def normalize_stock_code(symbol=''):
     lower_symbol = symbol.lower()
     for prefix in ('sh', 'sz', 'bj'):
         if lower_symbol.startswith(prefix):
-            return symbol[2:]
+            symbol = symbol[2:]
+            break
+    if '.' in symbol:
+        symbol = symbol.split('.', 1)[0]
     return symbol
+
+
+def _stock_market_from_suffix(symbol=''):
+    lower_symbol = str(symbol or '').strip().lower()
+    if '.' not in lower_symbol:
+        return None
+
+    suffix = lower_symbol.rsplit('.', 1)[1]
+    if suffix in ('sh', 'ss', 'xshg'):
+        return 'sh'
+    if suffix in ('sz', 'xshe'):
+        return 'sz'
+    if suffix in ('bj', 'bse'):
+        return 'bj'
+    return None
 
 
 def get_stock_market(symbol='', string=False):
@@ -54,9 +72,13 @@ def get_stock_market(symbol='', string=False):
     symbol = symbol.strip()
     lower_symbol = symbol.lower()
     code = normalize_stock_code(symbol)
+    suffix_market = _stock_market_from_suffix(symbol)
 
     if lower_symbol.startswith(('sh', 'sz', 'bj')):
         market = symbol[:2].lower()
+
+    elif suffix_market:
+        market = suffix_market
 
     elif code.startswith(('4', '8', '920')):
         market = 'bj'

@@ -23,6 +23,7 @@ from mootdx.server import check_server
 from mootdx.utils import get_frequency
 from mootdx.utils import get_stock_market
 from mootdx.utils import get_stock_markets
+from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
 
 
@@ -57,6 +58,32 @@ def valid_server(server):
             raise ValueError('Server 格式错误. 例如: server = ("127.0.0.1", 2272)')
 
     return None
+
+
+def _get_config_server(index):
+    servers = config.get_servers(index)
+    if not servers:
+        raise ValueError(f'未找到可用服务器: {index}')
+    return servers[0]
+
+
+def _get_config_servers(index):
+    servers = config.get_servers(index)
+    if not servers:
+        raise ValueError(f'未找到可用服务器: {index}')
+    return servers
+
+
+def _remember_server(index, server):
+    server and config.set_bestip(index, server)
+
+
+def _index_market(symbol):
+    lower_symbol = str(symbol or '').strip().lower()
+    code = normalize_stock_code(symbol)
+    if lower_symbol.startswith(('sh', 'sz', 'bj')) or '.' in lower_symbol:
+        return get_stock_market(symbol)
+    return (MARKET_SZ, MARKET_SH)[code[:2] in ['00', '88', '99']]
 
 
 class BaseQuotes(object):
@@ -141,21 +168,36 @@ class StdQuotes(BaseQuotes):
         """
 
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
-        self.server and config.set('BESTIP', {'HQ': self.server})
+        _remember_server('HQ', self.server)
 
         try:
             config.get('SERVER').get('HQ')[0]
         except ValueError as ex:
             logger.warning(ex)
         finally:
-            default = config.get('SERVER').get('HQ')[0][1:]
-            self.server = config.get('BESTIP').get('HQ', default)
+            self.server = _get_config_server('HQ')
 
-        logger.debug(f'server: {self.server}')
-        ip, port = self.server
-
-        self.client = TdxHq_API(heartbeat=heartbeat, auto_retry=auto_retry, raise_exception=raise_exception)
-        self.client.connect(ip, int(port), time_out=timeout)
+        last_error = None
+        for ip, port in _get_config_servers('HQ'):
+            logger.debug(f'server: {(ip, port)}')
+            client = TdxHq_API(heartbeat=heartbeat, auto_retry=auto_retry, raise_exception=raise_exception)
+            try:
+                connected = client.connect(ip, int(port), time_out=timeout)
+                if connected is False:
+                    raise TimeoutError(f'connect failed: {ip}:{port}')
+                self.server = (ip, int(port))
+                self.client = client
+                _remember_server('HQ', self.server)
+                break
+            except Exception as ex:
+                last_error = ex
+                logger.warning(f'行情服务器连接失败: {ip}:{port}, {ex}')
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        else:
+            raise last_error or TimeoutError('行情服务器连接失败')
 
         global instance
         instance = self
@@ -197,11 +239,12 @@ class StdQuotes(BaseQuotes):
         """
         frequency = get_frequency(frequency)
         market = get_stock_market(symbol)
+        code = normalize_stock_code(symbol)
 
         offset = (offset, 800)[offset > 800]
-        result = self.client.get_security_bars(int(frequency), int(market), str(symbol), int(start), int(offset))
+        result = self.client.get_security_bars(int(frequency), int(market), str(code), int(start), int(offset))
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def stock_count(self, market=MARKET_SH):
         """
@@ -260,10 +303,11 @@ class StdQuotes(BaseQuotes):
         frequency = get_frequency(frequency)
         offset = (offset, 800)[offset > 800]
 
-        market = (MARKET_SZ, MARKET_SH)[symbol[:2] in ['00', '88', '99']]
-        result = self.client.get_index_bars(int(frequency), int(market), str(symbol), int(start), int(offset))
+        market = _index_market(symbol)
+        code = normalize_stock_code(symbol)
+        result = self.client.get_index_bars(int(frequency), int(market), str(code), int(start), int(offset))
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def minute(self, symbol=None, **kwargs):
         """
@@ -286,13 +330,14 @@ class StdQuotes(BaseQuotes):
         """
 
         market = get_stock_market(symbol)
+        code = normalize_stock_code(symbol)
 
         if market not in [0, 1]:
             raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
-        result = self.client.get_history_minute_time_data(market=market, code=symbol, date=date)
+        result = self.client.get_history_minute_time_data(market=market, code=code, date=date)
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def transaction(self, symbol='', start=0, offset=800, **kwargs):
         """
@@ -305,10 +350,11 @@ class StdQuotes(BaseQuotes):
         """
 
         market = get_stock_market(symbol)
+        code = normalize_stock_code(symbol)
 
-        result = self.client.get_transaction_data(int(market), symbol, start, offset)
+        result = self.client.get_transaction_data(int(market), code, start, offset)
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def transactions(self, symbol='', start=0, offset=800, date='20170209', **kwargs):
         """
@@ -322,12 +368,13 @@ class StdQuotes(BaseQuotes):
         """
 
         market = get_stock_market(symbol, string=False)
+        code = normalize_stock_code(symbol)
 
         if market not in [0, 1]:
             raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
-        result = self.client.get_history_transaction_data(market, symbol, start, offset, int(date))
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        result = self.client.get_history_transaction_data(market, code, start, offset, int(date))
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def F10C(self, symbol=''):  # noqa
         """
@@ -338,11 +385,12 @@ class StdQuotes(BaseQuotes):
         """
 
         market = int(get_stock_market(symbol))
+        code = normalize_stock_code(symbol)
 
         if market not in [0, 1]:
             raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
-        result = self.client.get_company_info_category(market, symbol)
+        result = self.client.get_company_info_category(market, code)
 
         return result
 
@@ -357,11 +405,12 @@ class StdQuotes(BaseQuotes):
 
         result = {}
         market = int(get_stock_market(symbol, string=False))
+        code = normalize_stock_code(symbol)
 
         if market not in [0, 1]:
             raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
-        category = self.client.get_company_info_category(market, symbol)
+        category = self.client.get_company_info_category(market, code)
 
         if not category:
             return None
@@ -371,7 +420,7 @@ class StdQuotes(BaseQuotes):
                 if x['name'] == name:
                     return self.client.get_company_info_content(
                         market=market,
-                        code=symbol,
+                        code=code,
                         filename=x['filename'],
                         start=x['start'],
                         length=x['length'],
@@ -379,7 +428,7 @@ class StdQuotes(BaseQuotes):
 
         for x in category:
             result[x['name']] = self.client.get_company_info_content(
-                market=market, code=symbol, filename=x['filename'], start=x['start'], length=x['length']
+                market=market, code=code, filename=x['filename'], start=x['start'], length=x['length']
             )
 
         return result
@@ -393,9 +442,10 @@ class StdQuotes(BaseQuotes):
         """
 
         market = get_stock_market(symbol)
-        result = self.client.get_xdxr_info(int(market), symbol)
+        code = normalize_stock_code(symbol)
+        result = self.client.get_xdxr_info(int(market), code)
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def finance(self, symbol='000001', **kwargs):
         """
@@ -406,9 +456,10 @@ class StdQuotes(BaseQuotes):
         """
 
         market = get_stock_market(symbol)
-        result = self.client.get_finance_info(market=market, code=symbol)
+        code = normalize_stock_code(symbol)
+        result = self.client.get_finance_info(market=market, code=code)
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def k(self, symbol='', begin=None, end=None, **kwargs):
         """
@@ -441,6 +492,7 @@ class StdQuotes(BaseQuotes):
 
         temp = []
         market = get_stock_market(code)
+        code = normalize_stock_code(code)
 
         for i in range(math.ceil((last - first) / 800)):
             data = self.client.get_security_bars(9, market, code, (first + i * 800), 800)
@@ -483,10 +535,11 @@ class StdQuotes(BaseQuotes):
         frequency = get_frequency(frequency)
 
         offset = (offset, 800)[offset > 800]
-        market = (MARKET_SZ, MARKET_SH)[symbol[:2] in ['00', '88', '99']]
-        result = self.client.get_index_bars(int(frequency), int(market), str(symbol), int(start), int(offset))
+        market = _index_market(symbol)
+        code = normalize_stock_code(symbol)
+        result = self.client.get_index_bars(int(frequency), int(market), str(code), int(start), int(offset))
 
-        return to_data(result, symbol=symbol, client=self, **kwargs)
+        return to_data(result, symbol=code, client=self, **kwargs)
 
     def block(self, tofile='block.dat', **kwargs):
         """
@@ -514,7 +567,7 @@ class ExtQuotes(BaseQuotes):
         :param kwargs:  可变参数
         """
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
-        self.server and config.set('BESTIP', {'EX': self.server})
+        _remember_server('EX', self.server)
 
         logger.warning('目前扩展市场行情接口已经失效, 后期有望修复.')
 
@@ -523,8 +576,7 @@ class ExtQuotes(BaseQuotes):
         except ValueError as ex:
             logger.warning(ex)
         finally:
-            default = config.get('SERVER').get('EX')[0]
-            self.server = config.get('BESTIP').get('EX', default)
+            self.server = _get_config_server('EX')
 
         for x in ['verbose', 'server', 'quiet']:
             if x in kwargs.keys():

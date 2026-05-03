@@ -7,6 +7,7 @@ from tdxpy.reader import TdxMinBarReader
 
 from mootdx.contrib.compat import MooTdxDailyBarReader
 from mootdx.utils import get_stock_market
+from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
 
 
@@ -53,19 +54,24 @@ class ReaderBase(ABC):
         :return: pd.dataFrame or None
         """
 
+        raw_symbol = str(symbol or '')
+        code = normalize_stock_code(raw_symbol)
+
         # 判断市场, 带#扩展市场
-        if '#' in symbol:
+        if '#' in raw_symbol:
             market = 'ds'
         # 通达信特有的板块指数88****开头的日线数据放在 sh 文件夹下
-        elif symbol.startswith('88'):
+        elif code.startswith('88'):
             market = 'sh'
         else:
             # 判断是sh还是sz
-            market = get_stock_market(symbol, True)
+            market = get_stock_market(raw_symbol, True)
 
         # 判断前缀(市场是sh和sz重置前缀)
-        if market.lower() in ['sh', 'sz']:
-            symbol = market + symbol.lower().replace(market, '')
+        if market.lower() in ['sh', 'sz', 'bj']:
+            symbol = market + code
+        else:
+            symbol = raw_symbol
 
         # 判断后缀
         suffix = suffix if isinstance(suffix, list) else [suffix]
@@ -95,12 +101,12 @@ class StdReader(ReaderBase):
         :param symbol: 证券代码
         :return: pd.dataFrame or None
         """
-        symbol = Path(symbol).stem
+        code = normalize_stock_code(symbol)
         reader = MooTdxDailyBarReader()
         vipdoc = self.find_path(symbol=symbol, subdir='lday', suffix='day')
 
         result = reader.get_df(str(vipdoc)) if vipdoc else None
-        return to_data(result, symbol=symbol, **kwargs)
+        return to_data(result, symbol=code, **kwargs)
 
     def minute(self, symbol=None, suffix=1, **kwargs):  # noqa
         """
@@ -110,7 +116,6 @@ class StdReader(ReaderBase):
         :param symbol: 证券代码
         :return: pd.dataFrame or None
         """
-        symbol = Path(symbol).stem
         subdir = 'fzline' if str(suffix) == '5' else 'minline'
         suffix = ['lc5', '5'] if str(suffix) == '5' else ['lc1', '1']
         symbol = self.find_path(symbol, subdir=subdir, suffix=suffix)

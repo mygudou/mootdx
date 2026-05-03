@@ -3,6 +3,7 @@ from unittest import mock
 
 import pytest
 
+from mootdx import config
 from mootdx.consts import MARKET_BJ
 from mootdx.consts import MARKET_SH
 from mootdx.consts import MARKET_SZ
@@ -21,6 +22,10 @@ data = [
     ('920493', MARKET_BJ),
     ('bj920493', MARKET_BJ),
     ('BJ920493', MARKET_BJ),
+    ('920493.BJ', MARKET_BJ),
+    ('000300.SS', MARKET_SH),
+    ('000300.SH', MARKET_SH),
+    ('000001.SZ', MARKET_SZ),
     ('900901', MARKET_SH),
 ]
 
@@ -34,13 +39,48 @@ def test_normalize_stock_code_strips_supported_exchange_prefixes():
     assert normalize_stock_code('sh600036') == '600036'
     assert normalize_stock_code('SZ000001') == '000001'
     assert normalize_stock_code('bj920493') == '920493'
+    assert normalize_stock_code('000300.SS') == '000300'
+    assert normalize_stock_code('920493.BJ') == '920493'
 
 
 def test_get_stock_markets_uses_bse_market_for_920_codes():
-    assert get_stock_markets(['920493', 'bj920493']) == [
+    assert get_stock_markets(['920493', 'bj920493', '920493.BJ']) == [
+        [MARKET_BJ, '920493'],
         [MARKET_BJ, '920493'],
         [MARKET_BJ, '920493'],
     ]
+
+
+def test_get_stock_markets_uses_suffix_before_code_prefix():
+    assert get_stock_markets(['000300.SS', '000001.SZ']) == [
+        [MARKET_SH, '000300'],
+        [MARKET_SZ, '000001'],
+    ]
+
+
+def test_get_server_ignores_empty_bestip(monkeypatch):
+    monkeypatch.setitem(config.settings, 'BESTIP', {'HQ': ''})
+    monkeypatch.setitem(config.settings, 'SERVER', {'HQ': [('默认行情', '1.1.1.1', 7709)]})
+
+    assert config.get_server('HQ', default=('1.1.1.1', 7709)) == ('1.1.1.1', 7709)
+
+
+def test_get_servers_prefers_maintained_builtin_servers_before_stale_config(monkeypatch):
+    monkeypatch.setitem(config.settings, 'BESTIP', {'HQ': ''})
+    monkeypatch.setitem(config.settings, 'SERVER', {'HQ': [('旧行情', '1.1.1.1', 7709)]})
+
+    assert config.get_servers('HQ')[0] == ('180.153.18.170', 7709)
+
+
+def test_set_bestip_preserves_other_markets(monkeypatch):
+    monkeypatch.setitem(config.settings, 'BESTIP', {'HQ': '', 'EX': ('2.2.2.2', 7720)})
+
+    config.set_bestip('HQ', ('1.1.1.1', 7709))
+
+    assert config.settings['BESTIP'] == {
+        'HQ': ('1.1.1.1', 7709),
+        'EX': ('2.2.2.2', 7720),
+    }
 
 
 class TestMd5sum(unittest.TestCase):
