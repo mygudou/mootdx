@@ -105,6 +105,14 @@ class TestToData(unittest.TestCase):
         self.assertTrue(to_data('aaa').empty)
         self.assertTrue(to_data(123).empty)
 
+    def test_to_data_drops_invalid_datetime_rows(self):
+        result = to_data([
+            {'datetime': '2026-04-30 15:00:00', 'close': 1},
+            {'datetime': '0-00-00 15:00', 'close': 2},
+        ])
+
+        self.assertEqual(result.close.tolist(), [1])
+
 
 class TestConfigPath(unittest.TestCase):
     @mock.patch('platform.system')

@@ -6,6 +6,9 @@ import pandas as pd
 from tdxpy.exceptions import ValidationException
 from tdxpy.exhq import TdxExHq_API
 from tdxpy.hq import TdxHq_API
+from tdxpy.parser.std.get_company_info_category import GetCompanyInfoCategory
+from tdxpy.parser.std.get_company_info_content import GetCompanyInfoContent
+from tdxpy.parser.std.get_security_quotes import GetSecurityQuotesCmd
 from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import retry_if_result
@@ -86,6 +89,17 @@ def _index_market(symbol):
     return (MARKET_SZ, MARKET_SH)[code[:2] in ['00', '88', '99']]
 
 
+def _pop_market(kwargs, symbol, *, index=False):
+    market = kwargs.pop('market', None)
+    if market is not None:
+        return int(market)
+
+    if index:
+        return _index_market(symbol)
+
+    return int(get_stock_market(symbol))
+
+
 class BaseQuotes(object):
     client = None
     bestip = None
@@ -158,6 +172,8 @@ class StdQuotes(BaseQuotes):
     """
     股票市场实时行情"""
 
+    company_info_chunk_size = 32000
+
     def __init__(self, server=None, bestip=False, timeout=15, heartbeat=False, auto_retry=True, raise_exception=False,
                  **kwargs):
         """构造函数
@@ -205,6 +221,37 @@ class StdQuotes(BaseQuotes):
     def traffic(self):
         return self.client.get_traffic_stats()
 
+    def _call_command(self, command, *args):
+        cmd = command(self.client.client, lock=self.client.lock)
+        cmd.setParams(*args)
+        return cmd.call_api()
+
+    def _company_info_category(self, market, code):
+        return self._call_command(GetCompanyInfoCategory, market, code)
+
+    def _company_info_content(self, market, code, filename, start, length):
+        parts = []
+        position = int(start)
+        remaining = int(length)
+
+        while remaining > 0:
+            chunk_size = min(self.company_info_chunk_size, remaining)
+            chunk = self._call_command(GetCompanyInfoContent, market, code, filename, position, chunk_size)
+
+            if not chunk:
+                break
+
+            parts.append(chunk)
+            chunk_length = len(chunk.encode('gbk', 'ignore'))
+
+            if chunk_length <= 0:
+                break
+
+            position += chunk_length
+            remaining -= chunk_length
+
+        return ''.join(parts)
+
     def quotes(self, symbol=None, **kwargs):
         """
         获取实时日行情数据
@@ -221,7 +268,7 @@ class StdQuotes(BaseQuotes):
 
         try:
             symbol = get_stock_markets(symbol)
-            result = self.client.get_security_quotes(symbol)
+            result = self._call_command(GetSecurityQuotesCmd, symbol)
         except ValidationException:
             return to_data(None)
 
@@ -237,8 +284,18 @@ class StdQuotes(BaseQuotes):
         :param offset: 每次获取条数
         :return: pd.dataFrame or None
         """
+        if isinstance(symbol, (list, tuple, set)):
+            result = []
+            for code in symbol:
+                item = self.bars(symbol=code, frequency=frequency, start=start, offset=offset, **kwargs)
+                if not item.empty:
+                    item = item.assign(code=normalize_stock_code(code))
+                    result.append(item)
+
+            return pandas.concat(result) if result else to_data(None)
+
         frequency = get_frequency(frequency)
-        market = get_stock_market(symbol)
+        market = _pop_market(kwargs, symbol)
         code = normalize_stock_code(symbol)
 
         offset = (offset, 800)[offset > 800]
@@ -303,7 +360,7 @@ class StdQuotes(BaseQuotes):
         frequency = get_frequency(frequency)
         offset = (offset, 800)[offset > 800]
 
-        market = _index_market(symbol)
+        market = _pop_market(kwargs, symbol, index=True)
         code = normalize_stock_code(symbol)
         result = self.client.get_index_bars(int(frequency), int(market), str(code), int(start), int(offset))
 
@@ -328,12 +385,18 @@ class StdQuotes(BaseQuotes):
         :param date:    查询日期
         :return: pd.dataFrame or None
         """
+        if isinstance(symbol, (list, tuple, set)):
+            result = []
+            for code in symbol:
+                item = self.minutes(symbol=code, date=date, **kwargs)
+                if not item.empty:
+                    item = item.assign(code=normalize_stock_code(code))
+                    result.append(item)
 
-        market = get_stock_market(symbol)
+            return pandas.concat(result) if result else to_data(None)
+
+        market = _pop_market(kwargs, symbol)
         code = normalize_stock_code(symbol)
-
-        if market not in [0, 1]:
-            raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
         result = self.client.get_history_minute_time_data(market=market, code=code, date=date)
 
@@ -349,7 +412,7 @@ class StdQuotes(BaseQuotes):
         :return: pd.dataFrame or None
         """
 
-        market = get_stock_market(symbol)
+        market = _pop_market(kwargs, symbol)
         code = normalize_stock_code(symbol)
 
         result = self.client.get_transaction_data(int(market), code, start, offset)
@@ -367,11 +430,8 @@ class StdQuotes(BaseQuotes):
         :return: pd.dataFrame or None
         """
 
-        market = get_stock_market(symbol, string=False)
+        market = _pop_market(kwargs, symbol)
         code = normalize_stock_code(symbol)
-
-        if market not in [0, 1]:
-            raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
 
         result = self.client.get_history_transaction_data(market, code, start, offset, int(date))
         return to_data(result, symbol=code, client=self, **kwargs)
@@ -386,11 +446,7 @@ class StdQuotes(BaseQuotes):
 
         market = int(get_stock_market(symbol))
         code = normalize_stock_code(symbol)
-
-        if market not in [0, 1]:
-            raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
-
-        result = self.client.get_company_info_category(market, code)
+        result = self._company_info_category(market, code)
 
         return result
 
@@ -406,11 +462,7 @@ class StdQuotes(BaseQuotes):
         result = {}
         market = int(get_stock_market(symbol, string=False))
         code = normalize_stock_code(symbol)
-
-        if market not in [0, 1]:
-            raise MootdxValidationException('市场代码错误, 目前只支持沪深市场')
-
-        category = self.client.get_company_info_category(market, code)
+        category = self._company_info_category(market, code)
 
         if not category:
             return None
@@ -418,7 +470,7 @@ class StdQuotes(BaseQuotes):
         if name:
             for x in category:
                 if x['name'] == name:
-                    return self.client.get_company_info_content(
+                    return self._company_info_content(
                         market=market,
                         code=code,
                         filename=x['filename'],
@@ -427,7 +479,7 @@ class StdQuotes(BaseQuotes):
                     )
 
         for x in category:
-            result[x['name']] = self.client.get_company_info_content(
+            result[x['name']] = self._company_info_content(
                 market=market, code=code, filename=x['filename'], start=x['start'], length=x['length']
             )
 
@@ -535,7 +587,7 @@ class StdQuotes(BaseQuotes):
         frequency = get_frequency(frequency)
 
         offset = (offset, 800)[offset > 800]
-        market = _index_market(symbol)
+        market = _pop_market(kwargs, symbol, index=True)
         code = normalize_stock_code(symbol)
         result = self.client.get_index_bars(int(frequency), int(market), str(code), int(start), int(offset))
 
@@ -569,8 +621,6 @@ class ExtQuotes(BaseQuotes):
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
         _remember_server('EX', self.server)
 
-        logger.warning('目前扩展市场行情接口已经失效, 后期有望修复.')
-
         try:
             config.get('SERVER').get('EX')[0]
         except ValueError as ex:
@@ -582,11 +632,25 @@ class ExtQuotes(BaseQuotes):
             if x in kwargs.keys():
                 del kwargs[x]
 
-        try:
+        last_error = None
+        for ip, port in _get_config_servers('EX'):
             self.client = TdxExHq_API(raise_exception=False, auto_retry=True, **kwargs)
-            self.client.connect(*self.server)
-        except Exception:  # noqa
-            logger.error('服务器连接超时.')
+            try:
+                connected = self.client.connect(ip, int(port), time_out=timeout)
+                if connected is False:
+                    raise TimeoutError(f'connect failed: {ip}:{port}')
+                self.server = (ip, int(port))
+                _remember_server('EX', self.server)
+                break
+            except Exception as ex:  # noqa
+                last_error = ex
+                logger.warning(f'扩展行情服务器连接失败: {ip}:{port}, {ex}')
+                try:
+                    self.client.close()
+                except Exception:
+                    pass
+        else:
+            raise last_error or TimeoutError('扩展行情服务器连接失败')
 
         global instance
         instance = self

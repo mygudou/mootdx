@@ -194,10 +194,14 @@ def to_data(v, **kwargs):
         result = pd.DataFrame(data=[])
 
     if 'datetime' in result.columns:
-        result.index = pd.to_datetime(result.datetime)
+        index = pd.to_datetime(result.datetime, errors='coerce')
+        result = result.loc[index.notna()]
+        result.index = index[index.notna()]
 
     if 'date' in result.columns:
-        result.index = pd.to_datetime(result.date)
+        index = pd.to_datetime(result.date, errors='coerce')
+        result = result.loc[index.notna()]
+        result.index = index[index.notna()]
 
     if 'vol' in result.columns:
         result['volume'] = result.vol
