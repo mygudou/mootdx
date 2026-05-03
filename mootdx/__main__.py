@@ -25,6 +25,19 @@ def entry():
     ...
 
 
+def _frequency_from_action(action):
+    action = str(action or '').lower()
+
+    if action in ['daily', 'day', 'bars']:
+        return 9
+    if action in ['minute', '1', '1m', '1min']:
+        return 8
+    if action in ['fzline', '5', '5m', '5min']:
+        return 0
+
+    return 9
+
+
 @entry.command(help='读取股票在线行情数据.')
 @click.help_option('-h', '--help')
 @click.option('-o', '--output', default=None, help='输出文件, 支持CSV, HDF5, Excel等格式.')
@@ -37,15 +50,7 @@ def quotes(symbol, action, market, output):
     client = Quotes.factory(market=market, multithread=True)
 
     try:
-        action = 'bars' if 'daily' else action
-        if action == 'daily':
-            frequency = 9
-        elif action == 'minute':
-            frequency = 8
-        elif action == 'fzline':
-            frequency = 0
-        else:
-            frequency = 9
+        frequency = _frequency_from_action(action)
 
         feed = getattr(client, 'bars')(symbol=symbol, frequency=frequency)
         to_file(feed, output) if output else None
@@ -171,14 +176,7 @@ def bundle(symbol, action, market, output, extension):
 
     for code in symbol:
         try:
-            if action == 'daily':
-                frequency = 9
-            elif action == 'minute':
-                frequency = 8
-            elif action == 'fzline':
-                frequency = 0
-            else:
-                frequency = 9
+            frequency = _frequency_from_action(action)
 
             feed = getattr(client, 'bars')(symbol=code, frequency=frequency)
             output and to_file(feed, os.path.join(output, f'{code}.{extension}'))

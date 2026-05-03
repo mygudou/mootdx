@@ -110,30 +110,57 @@ def get_stock_market(symbol='', string=False):
     return market
 
 
-def gpcw(filepath):
-    cw_file = open(filepath, 'rb')
+def gpcw(filepath, header='raw'):
+    """
+    读取通达信本地 vipdoc/cw/gpsh*.dat、gpsz*.dat 财务文件
 
+    :param filepath: 本地财务文件路径
+    :param header: raw 使用 col1..col264 字段名
+    :return: pd.DataFrame
+    """
     header_size = calcsize('<3h1H3L')
     stock_item_size = calcsize('<6s1c1L')
+    field_count = 264
+    rows = []
 
-    data_header = cw_file.read(header_size)
-    stock_header = unpack('<3h1H3L', data_header)
+    with open(filepath, 'rb') as cw_file:
+        data_header = cw_file.read(header_size)
+        stock_header = unpack('<3h1H3L', data_header)
 
-    max_count = stock_header[3]
+        max_count = stock_header[3]
 
-    for idx in range(0, max_count):
-        cw_file.seek(header_size + idx * calcsize('<6s1c1L'))
-        si = cw_file.read(stock_item_size)
-        stock_item = unpack('<6s1c1L', si)
-        code = stock_item[0].decode()
-        foa = stock_item[2]
-        cw_file.seek(foa)
+        for idx in range(0, max_count):
+            cw_file.seek(header_size + idx * stock_item_size)
+            si = cw_file.read(stock_item_size)
 
-        info_data = cw_file.read(calcsize('<264f'))
-        cw_info = unpack('<264f', info_data)
+            if len(si) < stock_item_size:
+                break
 
-        logger.debug(f'{code}, {cw_info}')
-        return code, cw_info
+            stock_item = unpack('<6s1c1L', si)
+            code = stock_item[0].decode('utf-8', 'ignore').rstrip('\x00')
+            market = stock_item[1].decode('utf-8', 'ignore').rstrip('\x00')
+            offset = stock_item[2]
+
+            cw_file.seek(offset)
+            info_data = cw_file.read(calcsize('<264f'))
+
+            if len(info_data) < calcsize('<264f'):
+                logger.warning(f'财务数据不完整: {code}')
+                continue
+
+            cw_info = unpack('<264f', info_data)
+            rows.append((code, market) + cw_info)
+
+    if not rows:
+        return pd.DataFrame()
+
+    columns = ['code', 'market'] + [f'col{i}' for i in range(1, field_count + 1)]
+    data = pd.DataFrame(rows, columns=columns)
+
+    if header == 'raw':
+        return data.set_index('code', drop=False)
+
+    return data
 
 
 def md5sum(downfile):

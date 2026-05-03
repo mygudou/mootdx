@@ -1,4 +1,6 @@
 import unittest
+from struct import calcsize
+from struct import pack
 from unittest import mock
 
 import pandas
@@ -11,6 +13,7 @@ from mootdx.consts import MARKET_SZ
 from mootdx.utils import get_config_path
 from mootdx.utils import get_stock_market
 from mootdx.utils import get_stock_markets
+from mootdx.utils import gpcw
 from mootdx.utils import md5sum
 from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
@@ -127,6 +130,32 @@ def test_to_file_preserves_named_datetime_index(tmp_path):
     assert path.read_text().splitlines() == [
         'date,close',
         '2026-04-30 09:31:00,1',
+    ]
+
+
+def test_gpcw_reads_all_local_financial_records(tmp_path):
+    path = tmp_path / 'gpsh0001.dat'
+    header_format = '<3h1H3L'
+    item_format = '<6s1c1L'
+    header_size = calcsize(header_format)
+    item_size = calcsize(item_format)
+    first_offset = header_size + item_size * 2
+    second_offset = first_offset + calcsize('<264f')
+
+    content = bytearray()
+    content.extend(pack(header_format, 0, 0, 0, 2, 0, 0, 0))
+    content.extend(pack(item_format, b'600036', b'1', first_offset))
+    content.extend(pack(item_format, b'600000', b'1', second_offset))
+    content.extend(pack('<264f', *([1.0] + [0.0] * 263)))
+    content.extend(pack('<264f', *([2.0] + [0.0] * 263)))
+    path.write_bytes(content)
+
+    result = gpcw(path)
+
+    assert result.index.tolist() == ['600036', '600000']
+    assert result[['code', 'market', 'col1']].to_dict('records') == [
+        {'code': '600036', 'market': '1', 'col1': 1.0},
+        {'code': '600000', 'market': '1', 'col1': 2.0},
     ]
 
 

@@ -165,6 +165,32 @@ class StdReader(ReaderBase):
 
         return Customize(tdxdir=self.tdxdir).watchlist(filename=filename)
 
+    def financial(self, filename=None, market='sh'):
+        """
+        读取本地 vipdoc/cw 财务文件
+
+        :param filename: 财务文件路径；为空时读取 vipdoc/cw 下对应市场最新 gpsh/gpsz 文件
+        :param market: sh 或 sz
+        :return: pd.DataFrame
+        """
+
+        from mootdx.utils import gpcw
+
+        if filename is None:
+            cwdir = Path(self.tdxdir, 'vipdoc', 'cw')
+            prefix = f'gp{market.lower()}'
+            files = sorted(cwdir.glob(f'{prefix}*.dat'))
+
+            if not files:
+                return None
+
+            filename = files[-1]
+
+        return gpcw(filename)
+
+    def cw(self, filename=None, market='sh'):
+        return self.financial(filename=filename, market=market)
+
     def block(self, symbol='', group=False, **kwargs):
         """
         获取板块数据
@@ -177,6 +203,30 @@ class StdReader(ReaderBase):
         from mootdx.parse import BaseParse
 
         return BaseParse(self.tdxdir).parse(symbol, group=group, **kwargs)
+
+    def blocks(self, name='gn', group=False):
+        """
+        读取通达信 T0002/hq_cache 板块文件
+
+        :param name: gn/fg/zs/sb/sp/hk/jj/mg/uk，或完整文件名
+        :param group: 是否分组返回
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).blocks(name=name, group=group)
+
+    def block_files(self):
+        """
+        列出本地可解析板块文件
+
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).block_files()
 
 
 class ExtReader(ReaderBase):

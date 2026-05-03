@@ -8,9 +8,52 @@ from mootdx.consts import TYPE_GROUP
 from mootdx.logger import logger
 
 
+BLOCK_ALIASES = {
+    'fg': 'block_fg.dat',
+    'gn': 'block_gn.dat',
+    'zs': 'block_zs.dat',
+    'sb': 'sbblock.dat',
+    'sp': 'spblock.dat',
+    'hk': 'hkblock.dat',
+    'jj': 'jjblock.dat',
+    'mg': 'mgblock.dat',
+    'uk': 'ukblock.dat',
+}
+
+
 class BaseParse:
     def __init__(self, tdxdir):  # noqa
         self.tdxdir = tdxdir  # noqa
+
+    def block_files(self):
+        """
+        列出 T0002/hq_cache 下可解析的通达信板块文件
+
+        :return: pd.DataFrame(columns=['name', 'filename', 'path'])
+        """
+
+        hq_cache = Path(self.tdxdir, 'T0002', 'hq_cache')
+        rows = []
+
+        for name, filename in BLOCK_ALIASES.items():
+            path = hq_cache / filename
+
+            if path.exists():
+                rows.append({'name': name, 'filename': filename, 'path': str(path)})
+
+        return pd.DataFrame(rows, columns=['name', 'filename', 'path'])
+
+    def blocks(self, name='gn', group=False):
+        """
+        按通达信常见别名读取板块
+
+        :param name: gn/fg/zs/sb/sp/hk/jj/mg/uk，或完整文件名
+        :param group: 是否分组返回
+        :return: pd.DataFrame
+        """
+
+        symbol = BLOCK_ALIASES.get(str(name).lower(), name)
+        return self.parse(symbol=symbol, group=group)
 
     def parse(self, symbol=None, group=False, **kwargs):  # noqa
         """
@@ -23,6 +66,7 @@ class BaseParse:
         :return: pd.dataFrame or None
         """
 
+        symbol = BLOCK_ALIASES.get(str(symbol).lower(), symbol)
         suffix = Path(symbol).suffix or '.dat'
         symbol = Path(symbol).stem
 

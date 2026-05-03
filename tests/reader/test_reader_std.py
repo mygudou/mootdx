@@ -51,3 +51,17 @@ def test_minute(reader, symbol):
     for suffix in ('1', '5'):
         result = reader.minute(symbol=symbol, suffix=suffix)
         assert not result.empty
+
+
+def test_blocks_reads_common_tdx_alias(reader):
+    result = reader.blocks(name='gn', group=True)
+
+    assert result.empty is False
+    assert {'blockname', 'stock_count', 'code_list'}.issubset(result.columns)
+
+
+def test_block_files_lists_available_hq_cache_blocks(reader):
+    result = reader.block_files()
+
+    assert 'block_gn.dat' in result.filename.tolist()
+    assert 'gn' in result.name.tolist()
