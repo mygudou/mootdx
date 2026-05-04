@@ -1,3 +1,4 @@
+import struct
 from pathlib import Path
 
 import pandas as pd
@@ -82,6 +83,51 @@ HQ_CACHE_COLUMNS = {
 
 TNF_HEADER_SIZE = 50
 TNF_RECORD_SIZE = 314
+TCU_RECORD_SIZE = 150
+
+TCU_COLUMNS = [
+    'market',
+    'code',
+    'name',
+    'active1',
+    'price',
+    'open',
+    'high',
+    'low',
+    'last_close',
+    'vol',
+    'amount_raw',
+    'cur_vol',
+    'raw9',
+    'amount',
+    's_vol',
+    'b_vol',
+    'raw13',
+    'raw14',
+    'bid1',
+    'bid2',
+    'bid3',
+    'bid4',
+    'bid5',
+    'bid_vol1',
+    'bid_vol2',
+    'bid_vol3',
+    'bid_vol4',
+    'bid_vol5',
+    'ask1',
+    'ask2',
+    'ask3',
+    'ask4',
+    'ask5',
+    'ask_vol1',
+    'ask_vol2',
+    'ask_vol3',
+    'ask_vol4',
+    'ask_vol5',
+    'raw35',
+    'raw36',
+    'raw_tail',
+]
 
 
 def _decode_cstr(data):
@@ -125,6 +171,54 @@ def _read_gbk_pipe(path, columns=None):
         columns = columns + [f'col{i}' for i in range(len(columns), width)]
 
     return pd.DataFrame(rows, columns=columns[:width])
+
+
+def _unpack_tcu_record(record):
+    words = [record[i * 4:i * 4 + 4] for i in range(37)]
+    uints = [struct.unpack('<I', item)[0] for item in words]
+    floats = [struct.unpack('<f', item)[0] for item in words]
+    tail = struct.unpack('<H', record[148:150])[0]
+
+    return {
+        'active1': uints[0],
+        'price': floats[1],
+        'open': floats[2],
+        'high': floats[3],
+        'low': floats[4],
+        'last_close': floats[5],
+        'vol': uints[6],
+        'amount_raw': uints[7],
+        'cur_vol': uints[8],
+        'raw9': uints[9],
+        'amount': floats[10],
+        's_vol': uints[11],
+        'b_vol': uints[12],
+        'raw13': floats[13],
+        'raw14': floats[14],
+        'bid1': floats[15],
+        'bid2': floats[16],
+        'bid3': floats[17],
+        'bid4': floats[18],
+        'bid5': floats[19],
+        'bid_vol1': uints[20],
+        'bid_vol2': uints[21],
+        'bid_vol3': uints[22],
+        'bid_vol4': uints[23],
+        'bid_vol5': uints[24],
+        'ask1': floats[25],
+        'ask2': floats[26],
+        'ask3': floats[27],
+        'ask4': floats[28],
+        'ask5': floats[29],
+        'ask_vol1': uints[30],
+        'ask_vol2': uints[31],
+        'ask_vol3': uints[32],
+        'ask_vol4': uints[33],
+        'ask_vol5': uints[34],
+        'raw35': uints[35],
+        'raw36': uints[36],
+        'raw_tail': tail,
+    }
 
 
 class BaseParse:
@@ -238,6 +332,51 @@ class BaseParse:
             return pd.DataFrame(columns=columns)
 
         return _read_gbk_pipe(path, columns=columns)
+
+    def quote_cache(self, market='all'):
+        """
+        读取通达信本地 sh.tcu / sz.tcu 行情快照缓存
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame
+        """
+
+        markets = ['sh', 'sz'] if market in [None, 'all'] else market
+        markets = markets if isinstance(markets, (list, tuple, set)) else [markets]
+        result = []
+
+        for item in markets:
+            item = str(item).lower()
+            tcu = Path(self.tdxdir, 'T0002', 'hq_cache', f'{item}.tcu')
+
+            if not tcu.exists():
+                continue
+
+            stocks = self.stock_list(market=item)
+            data = tcu.read_bytes()
+            rows = []
+            count = min(len(stocks), len(data) // TCU_RECORD_SIZE)
+
+            for index in range(count):
+                start = index * TCU_RECORD_SIZE
+                record = data[start:start + TCU_RECORD_SIZE]
+                stock = stocks.iloc[index]
+                rows.append({
+                    'market': stock['market'],
+                    'code': stock['code'],
+                    'name': stock['name'],
+                    **_unpack_tcu_record(record),
+                })
+
+            result.append(pd.DataFrame(rows, columns=TCU_COLUMNS))
+
+        if not result:
+            return pd.DataFrame(columns=TCU_COLUMNS)
+
+        return pd.concat(result, ignore_index=True)
+
+    def tcu(self, market='all'):
+        return self.quote_cache(market=market)
 
     def tnf(self, filename, market=None):
         """

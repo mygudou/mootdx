@@ -204,6 +204,21 @@ class StdReader(ReaderBase):
 
         return BaseParse(self.tdxdir).hq_cache(name=name, columns=columns)
 
+    def quote_cache(self, market='all'):
+        """
+        读取本地通达信 sh.tcu / sz.tcu 行情快照缓存
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).quote_cache(market=market)
+
+    def tcu(self, market='all'):
+        return self.quote_cache(market=market)
+
     def watchlist(self, filename='zxg.blk'):
         """
         读取通达信自选股列表

@@ -152,3 +152,37 @@ def test_hq_cache_reads_local_adr_catalog(reader):
         'adr_code': 'BABA',
         'ratio': '8',
     }
+
+
+def test_quote_cache_reads_local_tcu_snapshot(reader):
+    result = reader.quote_cache(market='sh')
+    row = result[result.code == '600036'].iloc[0]
+
+    assert row[['market', 'code', 'name']].to_dict() == {
+        'market': 'sh',
+        'code': '600036',
+        'name': '招商银行',
+    }
+    assert row.price == pytest.approx(38.83)
+    assert row.open == pytest.approx(38.86)
+    assert row.high == pytest.approx(39.16)
+    assert row.low == pytest.approx(37.60)
+    assert row.last_close == pytest.approx(38.41)
+    assert row.vol == 150004
+    assert row.amount == pytest.approx(5605383168.0)
+    assert row.bid1 == pytest.approx(38.41)
+    assert row.bid_vol1 == 79
+    assert row.ask1 == pytest.approx(38.42)
+    assert row.ask_vol1 == 1117
+
+
+def test_tcu_alias_reads_local_quote_cache(reader):
+    result = reader.tcu(market='sz')
+    row = result.iloc[0]
+
+    assert row[['market', 'code', 'name']].to_dict() == {
+        'market': 'sz',
+        'code': '395001',
+        'name': '主板Ａ股',
+    }
+    assert row.price == pytest.approx(1484.0)

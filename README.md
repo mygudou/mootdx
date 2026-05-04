@@ -105,6 +105,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 | 证券搜索 | `stock_search()` | 支持 | 支持代码/名称模糊搜索和精确搜索 |
 | 期货/期权合约规则 | `contracts()` | 支持 | `code2name.ini`、`code2name_qq.ini` |
 | hq_cache 文本目录 | `hq_cache()` | 支持 | 概念、行业、指数、ADR、北交所等本地配置 |
+| 本地行情快照缓存 | `quote_cache()` / `tcu()` | 支持 | `sh.tcu`、`sz.tcu`，含价格、成交量、金额和五档 |
 | 本地财务文件 | `financial()` / `cw()` | 支持 | `vipdoc/cw/gpsh*.dat`、`gpsz*.dat` |
 
 ### 本地扩展市场 Reader `Reader.factory(market="ext")`
@@ -152,7 +153,8 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 - 北交所 F10 暂不支持；底层公司信息目录直接返回空。
 - 扩展市场依赖通达信扩展行情服务器和账号权限，不同服务器返回能力可能不同。
 - 本地 `.tnf` 已支持基础字段；更多隐藏字段语义还在对表中。
-- 本地 `hq_cache` 文本配置已支持常见目录；二进制 `.tdf`、`.tfz`、`.tcu`、扩展数据管理器 `.dat/.idx` 还没有完整解析。
+- 本地 `.tcu` 已支持常见行情快照字段；少数尾部字段仍以 `raw*` 保留。
+- 本地 `hq_cache` 文本配置已支持常见目录；二进制 `.tdf`、`.tfz`、扩展数据管理器 `.dat/.idx` 还没有完整解析。
 - 北交所涨跌幅 `30%`、主板/创业板/科创板涨跌幅等交易制度没有写进本库；`mootdx` 是行情读取库，不做下单撮合，也不自己计算涨停价和跌停价。
 
 为什么使用这个 fork
@@ -180,6 +182,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 - 新增本地 `shm.tnf`、`szm.tnf` 证券基础信息读取和搜索。
 - 新增本地 `code2name.ini`、`code2name_qq.ini` 扩展市场合约规则读取。
 - 新增本地 `hq_cache` 文本配置读取，覆盖概念、行业、指数、ADR、北交所等目录。
+- 新增本地 `sh.tcu`、`sz.tcu` 行情快照缓存读取。
 - 新增本地 `vipdoc/cw/gpsh*.dat`、`gpsz*.dat` 财务文件读取。
 - CSV/Excel/JSON 等导出会保留日线/分钟线的时间索引。
 - 修复命令行 `quotes` / `bundle` 的周期参数映射。
@@ -291,6 +294,9 @@ concepts = reader.hq_cache("concept")
 industries = reader.hq_cache("industry")
 adr = reader.hq_cache("adr")
 
+snapshot = reader.quote_cache(market="sh")
+snapshot2 = reader.tcu(market="sz")
+
 local_finance = reader.financial(market="sh")
 ```
 
@@ -328,7 +334,7 @@ pytest -q
 
 - 标准行情：继续补齐指数、债券、基金、ETF、北交所、新三板等代码类型和字段含义。
 - 扩展行情：持续验证期货、期权、港股、外盘等市场，区分协议能力和服务器权限。
-- 本地文件：继续补齐扩展数据管理器 `.dat/.idx`、`.tdf`、`.tfz`、`.tcu` 等解析，并完善 `.tnf` 字段含义。
+- 本地文件：继续补齐扩展数据管理器 `.dat/.idx`、`.tdf`、`.tfz` 等解析，并完善 `.tnf`、`.tcu` 字段含义。
 - 板块体系：继续整理行业、概念、地域、自定义板块、自选股的字段和对表测试。
 - F10/财务：补齐长文本、财报文件、字段字典和异常数据校验。
 - 与通达信客户端对表：对典型股票、指数、债券、ETF、期货、期权样本做持续回归测试。
