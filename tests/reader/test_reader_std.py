@@ -154,6 +154,78 @@ def test_hq_cache_reads_local_adr_catalog(reader):
     }
 
 
+def test_hq_cache_reads_local_code_group_catalog(reader):
+    result = reader.hq_cache('code_group')
+    row = result.iloc[0]
+
+    assert row.to_dict() == {
+        'group': 'QZ',
+        'category': 'CY',
+        'market': '0',
+        'code': '000158',
+    }
+
+
+def test_hq_cache_reads_local_new_share_catalog(reader):
+    result = reader.hq_cache('ipo')
+    row = result.iloc[0]
+
+    assert row[['market', 'code', 'apply_date', 'name', 'apply_limit2']].to_dict() == {
+        'market': '0',
+        'code': '301153',
+        'apply_date': '20220506',
+        'name': '中科江南',
+        'apply_limit2': '0.65',
+    }
+
+
+def test_hq_config_reads_local_ini_style_config(reader):
+    result = reader.hq_config('hqrule')
+    row = result[(result.section == 'RULE') & (result.key == 'SHGTDayMax')].iloc[0]
+
+    assert row.to_dict() == {
+        'section': 'RULE',
+        'key': 'SHGTDayMax',
+        'value': '520',
+    }
+
+
+def test_hq_config_keeps_percent_encoded_values(reader):
+    result = reader.hq_config('neednote')
+
+    assert result[result.value.str.contains('%E6', regex=False)].empty is False
+
+
+def test_option_codes_reads_local_sh_sz_option_files(reader):
+    result = reader.option_codes(market='all')
+
+    assert len(result) == 458
+    assert result.iloc[0][['market', 'update_date', 'code', 'symbol', 'name']].to_dict() == {
+        'market': 'sh',
+        'update_date': '20220311',
+        'code': '10003531',
+        'symbol': '510050C3A02900',
+        'name': '50ETF购3月2863A',
+    }
+    assert result[result.code == '90000735'].iloc[0][['market', 'name']].to_dict() == {
+        'market': 'sz',
+        'name': '沪深300ETF购3月4339A',
+    }
+
+
+def test_neeq_codes_reads_local_code_table(reader):
+    result = reader.neeq_codes()
+    row = result.iloc[0]
+
+    assert row[['code', 'total_share', 'float_share', 'list_date', 'pinyin']].to_dict() == {
+        'code': '400002',
+        'total_share': '32450000',
+        'float_share': '32450000',
+        'list_date': '20010716',
+        'pinyin': 'NBCN',
+    }
+
+
 def test_quote_cache_reads_local_tcu_snapshot(reader):
     result = reader.quote_cache(market='sh')
     row = result[result.code == '600036'].iloc[0]

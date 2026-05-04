@@ -1,4 +1,5 @@
 import struct
+from configparser import ConfigParser
 from pathlib import Path
 
 import pandas as pd
@@ -67,6 +68,18 @@ HQ_CACHE_ALIASES = {
     'bj_more': 'tdxbjmore.cfg',
     'us_stock': 'tdxmgag.cfg',
     'mgag': 'tdxmgag.cfg',
+    'code_group': 'code2gp.dat',
+    'code2gp': 'code2gp.dat',
+    'pinyin': 'hspy.dat',
+    'ipo': 'xgsg.cfg',
+    'new_share': 'xgsg.cfg',
+    'convertible_subscription': 'othersg.cfg',
+    'other_subscription': 'othersg.cfg',
+    'hk_ipo': 'hkxgsg.cfg',
+    'stat': 'tdxstat.cfg',
+    'index_base': 'tdxzsbase.cfg',
+    'import_index': 'importzs.cfg',
+    'infoharbor': 'infoharbor_spec.cfg',
 }
 
 HQ_CACHE_COLUMNS = {
@@ -79,7 +92,123 @@ HQ_CACHE_COLUMNS = {
     'tdxadr.cfg': ['name', 'hk_code', 'adr_code', 'ratio'],
     'tdxbjmore.cfg': ['market', 'code', 'market_id', 'name', 'reserved'],
     'tdxmgag.cfg': ['code', 'name', 'industry', 'concept', 'reserved'],
+    'code2gp.dat': ['group', 'category', 'market', 'code'],
+    'hspy.dat': ['market', 'code', 'pinyin'],
+    'xgsg.cfg': [
+        'market',
+        'code',
+        'apply_date',
+        'price',
+        'amount',
+        'online_amount',
+        'pe',
+        'raw7',
+        'raw8',
+        'raw9',
+        'apply_code',
+        'apply_limit',
+        'list_date',
+        'raw13',
+        'name',
+        'issue_price',
+        'apply_limit2',
+        'pe2',
+    ],
+    'othersg.cfg': [
+        'market',
+        'underlying_code',
+        'bond_code',
+        'issue_amount',
+        'price',
+        'ratio',
+        'apply_code',
+        'apply_limit',
+        'apply_date',
+        'online_rate',
+        'raw10',
+        'name',
+    ],
+    'hkxgsg.cfg': [
+        'code',
+        'name',
+        'market',
+        'apply_start',
+        'apply_end',
+        'list_date',
+        'price_low',
+        'price_high',
+        'amount',
+        'public_amount',
+        'lot_size',
+        'placement_amount',
+        'market_cap',
+        'raw13',
+        'currency',
+        'raw15',
+    ],
+    'tdxstat.cfg': ['market', 'code'],
+    'tdxzsbase.cfg': ['market', 'code'],
+    'importzs.cfg': ['code', 'date', 'count', 'raw3', 'raw4', 'raw5', 'raw6', 'raw7'],
+    'infoharbor_spec.cfg': ['market', 'code', 'flag', 'start_date', 'end_date'],
 }
+
+HQ_CONFIG_ALIASES = {
+    'hqrule': 'hqrule.dat',
+    'rule': 'hqrule.dat',
+    'neednote': 'neednote.dat',
+    'tend': 'tend_std.cfg',
+    'tend_std': 'tend_std.cfg',
+}
+
+OPTION_MARKET_FILES = {
+    'sh': 'ggqqcode.txt',
+    'sz': 'szqqcode.txt',
+}
+
+OPTION_CODE_COLUMNS = [
+    'market',
+    'update_date',
+    'code',
+    'symbol',
+    'name',
+    'underlying_code',
+    'underlying_name',
+    'contract_month',
+    'underlying_price',
+    'category',
+    'strike_price',
+    'list_date',
+    'expire_date',
+    'exercise_date',
+    'delivery_date',
+    'contract_id',
+    'pre_settlement',
+    'limit_up',
+    'limit_down',
+    'option_type',
+    'call_put',
+    'multiplier',
+    'exercise_type',
+    'raw21',
+]
+
+NEEQ_CODE_COLUMNS = [
+    'code',
+    'field1',
+    'field2',
+    'field3',
+    'total_share',
+    'float_share',
+    'list_date',
+    'field7',
+    'field8',
+    'pinyin',
+    'field10',
+    'name',
+    'field12',
+    'field13',
+    'field14',
+]
 
 TNF_HEADER_SIZE = 50
 TNF_RECORD_SIZE = 314
@@ -149,14 +278,14 @@ def _read_gbk_csv(path, columns):
     return pd.DataFrame(rows, columns=columns)
 
 
-def _read_gbk_pipe(path, columns=None):
+def _read_delimited(path, sep, columns=None, skip=0):
     rows = []
 
-    for line in Path(path).read_text(encoding='gbk', errors='ignore').splitlines():
+    for line in Path(path).read_text(encoding='gbk', errors='ignore').splitlines()[skip:]:
         if not line.strip():
             continue
 
-        rows.append([item.strip() for item in line.split('|')])
+        rows.append([item.strip() for item in line.split(sep)])
 
     if not rows:
         return pd.DataFrame(columns=columns)
@@ -171,6 +300,43 @@ def _read_gbk_pipe(path, columns=None):
         columns = columns + [f'col{i}' for i in range(len(columns), width)]
 
     return pd.DataFrame(rows, columns=columns[:width])
+
+
+def _read_gbk_pipe(path, columns=None):
+    return _read_delimited(path=path, sep='|', columns=columns)
+
+
+def _read_gbk_ini(path):
+    parser = ConfigParser(interpolation=None)
+    parser.optionxform = str
+    parser.read_string(Path(path).read_text(encoding='gbk', errors='ignore'))
+    rows = []
+
+    for section in parser.sections():
+        for key, value in parser.items(section):
+            rows.append({'section': section, 'key': key, 'value': value})
+
+    return pd.DataFrame(rows, columns=['section', 'key', 'value'])
+
+
+def _read_option_codes(path, market):
+    lines = Path(path).read_text(encoding='gbk', errors='ignore').splitlines()
+    if not lines:
+        return pd.DataFrame(columns=OPTION_CODE_COLUMNS)
+
+    header = lines[0].split(',')
+    update_date = header[0].strip()
+    rows = []
+
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+
+        parts = [item.strip() for item in line.split(',')]
+        parts.extend([''] * (len(OPTION_CODE_COLUMNS) - 2 - len(parts)))
+        rows.append([market, update_date] + parts[:len(OPTION_CODE_COLUMNS) - 2])
+
+    return pd.DataFrame(rows, columns=OPTION_CODE_COLUMNS)
 
 
 def _unpack_tcu_record(record):
@@ -332,6 +498,61 @@ class BaseParse:
             return pd.DataFrame(columns=columns)
 
         return _read_gbk_pipe(path, columns=columns)
+
+    def hq_config(self, name='hqrule'):
+        """
+        读取通达信 T0002/hq_cache 下 INI 风格配置文件
+
+        :param name: hqrule/neednote/tend 等别名，或完整文件名
+        :return: pd.DataFrame(columns=['section', 'key', 'value'])
+        """
+
+        filename = HQ_CONFIG_ALIASES.get(str(name).lower(), name)
+        path = Path(self.tdxdir, 'T0002', 'hq_cache', filename)
+
+        if not path.exists():
+            return pd.DataFrame(columns=['section', 'key', 'value'])
+
+        return _read_gbk_ini(path)
+
+    def option_codes(self, market='all'):
+        """
+        读取通达信本地股票期权代码表 ggqqcode.txt / szqqcode.txt
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame
+        """
+
+        markets = ['sh', 'sz'] if market in [None, 'all'] else market
+        markets = markets if isinstance(markets, (list, tuple, set)) else [markets]
+        result = []
+
+        for item in markets:
+            item = str(item).lower()
+            filename = OPTION_MARKET_FILES.get(item, item)
+            path = Path(self.tdxdir, 'T0002', 'hq_cache', filename)
+
+            if path.exists():
+                result.append(_read_option_codes(path, market=item))
+
+        if not result:
+            return pd.DataFrame(columns=OPTION_CODE_COLUMNS)
+
+        return pd.concat(result, ignore_index=True)
+
+    def neeq_codes(self):
+        """
+        读取通达信本地新三板 / 退市板代码表 neeqcode.txt
+
+        :return: pd.DataFrame
+        """
+
+        path = Path(self.tdxdir, 'T0002', 'hq_cache', 'neeqcode.txt')
+
+        if not path.exists():
+            return pd.DataFrame(columns=NEEQ_CODE_COLUMNS)
+
+        return _read_delimited(path=path, sep=',', columns=NEEQ_CODE_COLUMNS, skip=1)
 
     def quote_cache(self, market='all'):
         """

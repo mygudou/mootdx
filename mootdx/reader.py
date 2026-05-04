@@ -204,6 +204,41 @@ class StdReader(ReaderBase):
 
         return BaseParse(self.tdxdir).hq_cache(name=name, columns=columns)
 
+    def hq_config(self, name='hqrule'):
+        """
+        读取本地通达信 T0002/hq_cache INI 风格配置
+
+        :param name: hqrule/neednote/tend 等别名，或完整文件名
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).hq_config(name=name)
+
+    def option_codes(self, market='all'):
+        """
+        读取本地通达信股票期权代码表
+
+        :param market: sh/sz/all，或市场列表
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).option_codes(market=market)
+
+    def neeq_codes(self):
+        """
+        读取本地通达信新三板 / 退市板代码表
+
+        :return: pd.DataFrame
+        """
+
+        from mootdx.parse import BaseParse
+
+        return BaseParse(self.tdxdir).neeq_codes()
+
     def quote_cache(self, market='all'):
         """
         读取本地通达信 sh.tcu / sz.tcu 行情快照缓存
