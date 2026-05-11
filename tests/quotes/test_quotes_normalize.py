@@ -194,3 +194,49 @@ def test_company_info_content_reads_large_text_in_chunks():
 
     assert result == 'abcdewxyz'
     assert calls == [(10, 5), (15, 4)]
+
+
+# --- Regression tests for Bug 2: symbols= kwarg alias ---
+
+def test_quotes_batch_accepts_symbols_kwarg():
+    """Bug 2 regression: quotes_batch(symbols=[...]) must work, not silently return empty."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbols=['600519', '000001'])
+
+    assert not result.empty, "Expected non-empty DataFrame when symbols= kwarg is used"
+    assert set(result.code.tolist()) == {'600519', '000001'}
+
+
+def test_quotes_batch_symbol_kwarg_still_works():
+    """Bug 2 backward compat: quotes_batch(symbol=[...]) must still work."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbol=['600519', '000001'])
+
+    assert not result.empty, "Expected non-empty DataFrame when legacy symbol= kwarg is used"
+    assert set(result.code.tolist()) == {'600519', '000001'}
+
+
+def test_quotes_batch_symbols_takes_priority_over_symbol():
+    """Bug 2: when both symbol= and symbols= are provided, symbols= wins."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbol=['000001'], symbols=['600519'])
+
+    assert result.code.tolist() == ['600519'], "symbols= should take priority over symbol="

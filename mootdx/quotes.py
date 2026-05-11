@@ -337,14 +337,17 @@ class StdQuotes(BaseQuotes):
 
         return to_data(result, symbol=symbol, client=self, **kwargs)
 
-    def quotes_batch(self, symbol=None, batch_size=80, **kwargs):
+    def quotes_batch(self, symbol=None, symbols=None, batch_size=80, **kwargs):
         """
         批量获取实时行情
 
-        :param symbol: 股票代码列表，或已解析好的 [(market, code)] 列表
+        :param symbol: 股票代码列表，或已解析好的 [(market, code)] 列表 (推荐使用 symbols)
+        :param symbols: 股票代码列表 (优先于 symbol，新代码请用此参数)
         :param batch_size: 单次请求数量
         :return: pd.DataFrame
         """
+
+        symbol = symbols if symbols is not None else symbol
 
         if not symbol:
             return to_data(None)
