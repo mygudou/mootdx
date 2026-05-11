@@ -274,3 +274,52 @@ def test_quotes_batch_symbols_takes_priority_over_symbol():
     result = client.quotes_batch(symbol=['000001'], symbols=['600519'])
 
     assert result.code.tolist() == ['600519'], "symbols= should take priority over symbol="
+
+
+def test_check_empty_handles_datetime_columns():
+    """Regression: check_empty must not call DataFrame.all() on datetime64 columns
+    (raises TypeError on modern pandas). It should only consult df.empty."""
+    from mootdx.quotes import check_empty
+
+    df = pandas.DataFrame({
+        'time': pandas.to_datetime(['2026-01-01 09:30', '2026-01-01 09:31']),
+        'price': [10.0, 10.1],
+    })
+    # Must not raise.
+    assert check_empty(df) is False
+    assert check_empty(pandas.DataFrame()) is True
+
+
+def test_get_k_data_filters_with_compact_and_dashed_dates():
+    """Bug: k(begin='20260101', end='20260501') used to return empty because
+    the user-supplied compact dates were string-compared against YYYY-MM-DD
+    formatted dates from tdx. Both formats must work and yield the same rows."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    rows = [
+        {'datetime': '2026-01-05 15:00', 'open': 1.0, 'close': 1.1, 'high': 1.2,
+         'low': 0.9, 'vol': 100.0, 'amount': 100.0, 'year': 2026, 'month': 1,
+         'day': 5, 'hour': 15, 'minute': 0},
+        {'datetime': '2026-04-29 15:00', 'open': 2.0, 'close': 2.1, 'high': 2.2,
+         'low': 1.9, 'vol': 200.0, 'amount': 200.0, 'year': 2026, 'month': 4,
+         'day': 29, 'hour': 15, 'minute': 0},
+        {'datetime': '2026-05-02 15:00', 'open': 3.0, 'close': 3.1, 'high': 3.2,
+         'low': 2.9, 'vol': 300.0, 'amount': 300.0, 'year': 2026, 'month': 5,
+         'day': 2, 'hour': 15, 'minute': 0},
+    ]
+
+    class _Client:
+        def get_security_bars(self, *args, **kwargs):
+            return rows
+
+        def to_df(self, data):
+            return pandas.DataFrame(data)
+
+    client.client = _Client()
+
+    df_compact = client.get_k_data('600036', '20260101', '20260501')
+    df_dashed = client.get_k_data('600036', '2026-01-01', '2026-05-01')
+
+    # Both call styles must keep the two in-range rows and drop 2026-05-02 (>= end)
+    assert df_compact.date.tolist() == ['2026-01-05', '2026-04-29']
+    assert df_dashed.date.tolist() == ['2026-01-05', '2026-04-29']
