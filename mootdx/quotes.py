@@ -224,10 +224,11 @@ def check_empty(value):
     :param value: 要判断的值
     :return:
     """
-    _empty = value.all().empty if isinstance(value, pd.DataFrame) else not value
+    # value.all() 在 pandas 新版本对 datetime64 列会抛 TypeError，直接用 .empty 即可
+    _empty = value.empty if isinstance(value, pd.DataFrame) else not value
 
-    # 判断状态空，则重连接
-    if instance and _empty:
+    # 判断状态空，则重连接 (instance 仅在 StdQuotes/ExtQuotes 构造后才被赋值)
+    if globals().get('instance') and _empty:
         logger.warning('返回数据空, 重新连接服务器...')
         # instance.client.connect(*instance.server)
 
@@ -337,23 +338,31 @@ class StdQuotes(BaseQuotes):
 
         return to_data(result, symbol=symbol, client=self, **kwargs)
 
-    def quotes_batch(self, symbol=None, batch_size=80, **kwargs):
+    def quotes_batch(self, symbol=None, symbols=None, batch_size=80, **kwargs):
         """
         批量获取实时行情
 
-        :param symbol: 股票代码列表，或已解析好的 [(market, code)] 列表
+        :param symbol: 股票代码列表，或已解析好的 [(market, code)] 列表 (推荐使用 symbols)
+        :param symbols: 股票代码列表 (优先于 symbol，新代码请用此参数)
         :param batch_size: 单次请求数量
         :return: pd.DataFrame
         """
 
+        symbol = symbols if symbols is not None else symbol
+
         if not symbol:
             return to_data(None)
 
-        symbols = _quote_symbols(symbol)
+        resolved = _quote_symbols(symbol)
         result = []
 
-        for start in range(0, len(symbols), int(batch_size)):
-            data = self.quotes(symbol=symbols[start:start + int(batch_size)], **kwargs)
+        for start in range(0, len(resolved), int(batch_size)):
+            batch = resolved[start:start + int(batch_size)]
+            try:
+                data = self.quotes(symbol=batch, **kwargs)
+            except (ValueError, ValidationException) as exc:
+                logger.warning('quotes_batch: skip batch due to %s', exc)
+                continue
             if not data.empty:
                 result.append(data)
 
@@ -672,12 +681,15 @@ class StdQuotes(BaseQuotes):
         return self.k(**kwargs)
 
     def get_k_data(self, code, start_date, end_date):
+        start_ts = pd.to_datetime(start_date)
+        end_ts = pd.to_datetime(end_date)
+
         # 开始时间离现在有几天
-        first = (pd.to_datetime(end_date) - pd.to_datetime(datetime.now().date())).days
+        first = (end_ts - pd.to_datetime(datetime.now().date())).days
         first = (abs(first), 0)[first >= 0]
 
         # 结束时间离现在有几天
-        last = (pd.to_datetime(start_date) - pd.to_datetime(datetime.now().date())).days
+        last = (start_ts - pd.to_datetime(datetime.now().date())).days
         last = (abs(last), 0)[last >= 0]
 
         # 去除节假日
@@ -688,7 +700,8 @@ class StdQuotes(BaseQuotes):
         market = get_stock_market(code)
         code = normalize_stock_code(code)
 
-        for i in range(math.ceil((last - first) / 800)):
+        iters = max(math.ceil((last - first) / 800), 1)
+        for i in range(iters):
             data = self.client.get_security_bars(9, market, code, (first + i * 800), 800)
             temp.append(self.client.to_df(data))
 
@@ -696,7 +709,10 @@ class StdQuotes(BaseQuotes):
         data = data.assign(date=data['datetime'].apply(lambda x: str(x)[0:10])).assign(code=str(code))
         data = data.set_index('date', drop=False, inplace=False)
         data = data.drop(['year', 'month', 'day', 'hour', 'minute', 'datetime'], axis=1)
-        data = data.loc[(data.date >= start_date) & (data.date < end_date)]
+        # 归一化到 YYYY-MM-DD 以兼容用户传入的紧凑日期 (YYYYMMDD) 与分隔日期 (YYYY-MM-DD)
+        start_str = start_ts.strftime('%Y-%m-%d')
+        end_str = end_ts.strftime('%Y-%m-%d')
+        data = data.loc[(data.date >= start_str) & (data.date < end_str)]
         data = data.sort_index()
 
         return data

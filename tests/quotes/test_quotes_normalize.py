@@ -194,3 +194,132 @@ def test_company_info_content_reads_large_text_in_chunks():
 
     assert result == 'abcdewxyz'
     assert calls == [(10, 5), (15, 4)]
+
+
+# --- Regression tests for Bug 1: ValueError tolerance in batch APIs ---
+
+def test_quotes_batch_tolerates_valueerror_from_tdxpy():
+    """Bug 1 regression: per-symbol ValueError from tdxpy must not crash quotes_batch."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command_raises(command, symbols):
+        raise ValueError("invalid literal for int() with base 10: ''")
+
+    client._call_command = call_command_raises
+
+    result = client.quotes_batch(['600519', '000001'])
+
+    assert result.empty, "Expected empty DataFrame when all batches raise ValueError"
+
+
+def test_quotes_all_tolerates_valueerror_from_tdxpy():
+    """Bug 1 regression: ValueError in inner quotes() must not crash quotes_all."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def stocks(market):
+        return pandas.DataFrame({'code': ['000001'] if market == MARKET_SZ else ['600519']})
+
+    def call_command_raises(command, symbols):
+        raise ValueError("invalid literal for int() with base 10: ''")
+
+    client.stocks = stocks
+    client._call_command = call_command_raises
+
+    result = client.quotes_all()
+
+    assert result.empty, "Expected empty DataFrame when all batches raise ValueError"
+
+
+# --- Regression tests for Bug 2: symbols= kwarg alias ---
+
+def test_quotes_batch_accepts_symbols_kwarg():
+    """Bug 2 regression: quotes_batch(symbols=[...]) must work, not silently return empty."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbols=['600519', '000001'])
+
+    assert not result.empty, "Expected non-empty DataFrame when symbols= kwarg is used"
+    assert set(result.code.tolist()) == {'600519', '000001'}
+
+
+def test_quotes_batch_symbol_kwarg_still_works():
+    """Bug 2 backward compat: quotes_batch(symbol=[...]) must still work."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbol=['600519', '000001'])
+
+    assert not result.empty, "Expected non-empty DataFrame when legacy symbol= kwarg is used"
+    assert set(result.code.tolist()) == {'600519', '000001'}
+
+
+def test_quotes_batch_symbols_takes_priority_over_symbol():
+    """Bug 2: when both symbol= and symbols= are provided, symbols= wins."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command(command, symbols):
+        return [{'market': market, 'code': code, 'price': 1.0} for market, code in symbols]
+
+    client._call_command = call_command
+
+    result = client.quotes_batch(symbol=['000001'], symbols=['600519'])
+
+    assert result.code.tolist() == ['600519'], "symbols= should take priority over symbol="
+
+
+def test_check_empty_handles_datetime_columns():
+    """Regression: check_empty must not call DataFrame.all() on datetime64 columns
+    (raises TypeError on modern pandas). It should only consult df.empty."""
+    from mootdx.quotes import check_empty
+
+    df = pandas.DataFrame({
+        'time': pandas.to_datetime(['2026-01-01 09:30', '2026-01-01 09:31']),
+        'price': [10.0, 10.1],
+    })
+    # Must not raise.
+    assert check_empty(df) is False
+    assert check_empty(pandas.DataFrame()) is True
+
+
+def test_get_k_data_filters_with_compact_and_dashed_dates():
+    """Bug: k(begin='20260101', end='20260501') used to return empty because
+    the user-supplied compact dates were string-compared against YYYY-MM-DD
+    formatted dates from tdx. Both formats must work and yield the same rows."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    rows = [
+        {'datetime': '2026-01-05 15:00', 'open': 1.0, 'close': 1.1, 'high': 1.2,
+         'low': 0.9, 'vol': 100.0, 'amount': 100.0, 'year': 2026, 'month': 1,
+         'day': 5, 'hour': 15, 'minute': 0},
+        {'datetime': '2026-04-29 15:00', 'open': 2.0, 'close': 2.1, 'high': 2.2,
+         'low': 1.9, 'vol': 200.0, 'amount': 200.0, 'year': 2026, 'month': 4,
+         'day': 29, 'hour': 15, 'minute': 0},
+        {'datetime': '2026-05-02 15:00', 'open': 3.0, 'close': 3.1, 'high': 3.2,
+         'low': 2.9, 'vol': 300.0, 'amount': 300.0, 'year': 2026, 'month': 5,
+         'day': 2, 'hour': 15, 'minute': 0},
+    ]
+
+    class _Client:
+        def get_security_bars(self, *args, **kwargs):
+            return rows
+
+        def to_df(self, data):
+            return pandas.DataFrame(data)
+
+    client.client = _Client()
+
+    df_compact = client.get_k_data('600036', '20260101', '20260501')
+    df_dashed = client.get_k_data('600036', '2026-01-01', '2026-05-01')
+
+    # Both call styles must keep the two in-range rows and drop 2026-05-02 (>= end)
+    assert df_compact.date.tolist() == ['2026-01-05', '2026-04-29']
+    assert df_dashed.date.tolist() == ['2026-01-05', '2026-04-29']
