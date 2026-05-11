@@ -196,6 +196,40 @@ def test_company_info_content_reads_large_text_in_chunks():
     assert calls == [(10, 5), (15, 4)]
 
 
+# --- Regression tests for Bug 1: ValueError tolerance in batch APIs ---
+
+def test_quotes_batch_tolerates_valueerror_from_tdxpy():
+    """Bug 1 regression: per-symbol ValueError from tdxpy must not crash quotes_batch."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def call_command_raises(command, symbols):
+        raise ValueError("invalid literal for int() with base 10: ''")
+
+    client._call_command = call_command_raises
+
+    result = client.quotes_batch(['600519', '000001'])
+
+    assert result.empty, "Expected empty DataFrame when all batches raise ValueError"
+
+
+def test_quotes_all_tolerates_valueerror_from_tdxpy():
+    """Bug 1 regression: ValueError in inner quotes() must not crash quotes_all."""
+    client = StdQuotes.__new__(StdQuotes)
+
+    def stocks(market):
+        return pandas.DataFrame({'code': ['000001'] if market == MARKET_SZ else ['600519']})
+
+    def call_command_raises(command, symbols):
+        raise ValueError("invalid literal for int() with base 10: ''")
+
+    client.stocks = stocks
+    client._call_command = call_command_raises
+
+    result = client.quotes_all()
+
+    assert result.empty, "Expected empty DataFrame when all batches raise ValueError"
+
+
 # --- Regression tests for Bug 2: symbols= kwarg alias ---
 
 def test_quotes_batch_accepts_symbols_kwarg():

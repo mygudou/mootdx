@@ -352,11 +352,16 @@ class StdQuotes(BaseQuotes):
         if not symbol:
             return to_data(None)
 
-        symbols = _quote_symbols(symbol)
+        resolved = _quote_symbols(symbol)
         result = []
 
-        for start in range(0, len(symbols), int(batch_size)):
-            data = self.quotes(symbol=symbols[start:start + int(batch_size)], **kwargs)
+        for start in range(0, len(resolved), int(batch_size)):
+            batch = resolved[start:start + int(batch_size)]
+            try:
+                data = self.quotes(symbol=batch, **kwargs)
+            except (ValueError, ValidationException) as exc:
+                logger.warning('quotes_batch: skip batch due to %s', exc)
+                continue
             if not data.empty:
                 result.append(data)
 
