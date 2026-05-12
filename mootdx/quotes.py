@@ -242,12 +242,13 @@ class StdQuotes(BaseQuotes):
     company_info_chunk_size = 32000
 
     def __init__(self, server=None, bestip=False, timeout=15, heartbeat=False, auto_retry=True, raise_exception=False,
-                 **kwargs):
+                 multithread=True, **kwargs):
         """构造函数
 
-        :param bestip:  最佳 IP
-        :param timeout: 超时时间
-        :param kwargs:  可变参数
+        :param bestip:      最佳 IP
+        :param timeout:     超时时间
+        :param multithread: 是否启用线程锁（默认 True，并发调用必须开启，否则 socket 会被并发请求撕裂）
+        :param kwargs:      可变参数
         """
 
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
@@ -263,7 +264,7 @@ class StdQuotes(BaseQuotes):
         last_error = None
         for ip, port in _get_config_servers('HQ'):
             logger.debug(f'server: {(ip, port)}')
-            client = TdxHq_API(heartbeat=heartbeat, auto_retry=auto_retry, raise_exception=raise_exception)
+            client = TdxHq_API(multithread=multithread, heartbeat=heartbeat, auto_retry=auto_retry, raise_exception=raise_exception)
             try:
                 connected = client.connect(ip, int(port), time_out=timeout)
                 if connected is False:
@@ -768,13 +769,14 @@ class ExtQuotes(BaseQuotes):
 
     # server = ("112.74.214.43", 7727)
 
-    def __init__(self, server: list = None, bestip=False, timeout=15, **kwargs):
+    def __init__(self, server: list = None, bestip=False, timeout=15, multithread=True, **kwargs):
         """
         构造函数
 
-        :param bestip:  最优服务器IP
-        :param timeout: 超时时间
-        :param kwargs:  可变参数
+        :param bestip:      最优服务器IP
+        :param timeout:     超时时间
+        :param multithread: 是否启用线程锁（默认 True，并发调用必须开启，否则 socket 会被并发请求撕裂）
+        :param kwargs:      可变参数
         """
         super().__init__(bestip=bestip, timeout=timeout, server=server, **kwargs)
         _remember_server('EX', self.server)
@@ -792,7 +794,7 @@ class ExtQuotes(BaseQuotes):
 
         last_error = None
         for ip, port in _get_config_servers('EX'):
-            self.client = TdxExHq_API(raise_exception=False, auto_retry=True, **kwargs)
+            self.client = TdxExHq_API(multithread=multithread, raise_exception=False, auto_retry=True, **kwargs)
             try:
                 connected = self.client.connect(ip, int(port), time_out=timeout)
                 if connected is False:
