@@ -756,11 +756,39 @@ class StdQuotes(BaseQuotes):
         """
         获取证券板块信息
 
-        :param tofile: 保存文件
-        :return: pd.dataFrame or None
-        """
+        通达信板块文件: block.dat(指数) / block_gn.dat(概念) /
+        block_fg.dat(风格) / block_zs.dat(指数)。
 
-        result = self.client.get_and_parse_block_info(tofile)
+        注: 不走 tdxpy 的 get_and_parse_block_info——它分块下载有 bug: 每个分块都
+        用整文件 size 作为请求长度、start 却按固定 one_chunk 步进,而服务端单次最多
+        返回约 0x7530*2 字节,导致分块重叠错位(约前 60000 字节 / 22 个板块之后
+        blockname 解析全部乱码)。这里改为按"实际已收字节数"推进 start 自行拼装,
+        再交给 BlockReader 解析,板块名即可全程正确。
+
+        :param tofile: 板块文件名(默认 block.dat)
+        :return: pd.DataFrame or None
+        """
+        from tdxpy.reader.block_reader import BlockReader, BlockReader_TYPE_FLAT
+
+        meta = self.client.get_block_info_meta(tofile)
+
+        if not meta:
+            return None
+
+        size = meta["size"]
+        one_chunk = 0x7530
+        content = bytearray()
+
+        while len(content) < size:
+            piece = self.client.get_block_info(tofile, len(content), one_chunk)
+
+            if not piece:
+                break
+
+            content.extend(piece)
+
+        result = BlockReader().get_data(content, BlockReader_TYPE_FLAT)
+
         return to_data(result, **kwargs)
 
 
