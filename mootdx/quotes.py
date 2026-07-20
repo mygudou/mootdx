@@ -98,6 +98,21 @@ class GetHistoryTransactionDataWithNum(BaseParser):
         return ticks
 
 
+# fallback 建连超时上限：丢包黑洞服务器不该把实例化卡满整个操作超时（默认 15s）
+CONNECT_TIMEOUT_CAP = 5
+
+
+def _connect_timeout(timeout):
+    return min(timeout, CONNECT_TIMEOUT_CAP) if timeout else CONNECT_TIMEOUT_CAP
+
+
+def _restore_op_timeout(client, timeout, connect_timeout):
+    """tdxpy 的 connect(time_out) 会 settimeout 到整个 socket；连上后恢复操作超时。"""
+    if timeout and timeout != connect_timeout:
+        sock = getattr(client, 'client', None)
+        sock is not None and sock.settimeout(timeout)
+
+
 def valid_server(server):
     import ipaddress
 
@@ -262,15 +277,17 @@ class StdQuotes(BaseQuotes):
             self.server = _get_config_server('HQ')
 
         last_error = None
+        connect_timeout = _connect_timeout(timeout)
         for ip, port in _get_config_servers('HQ'):
             logger.debug(f'server: {(ip, port)}')
             client = TdxHq_API(multithread=multithread, heartbeat=heartbeat, auto_retry=auto_retry, raise_exception=raise_exception)
             try:
-                connected = client.connect(ip, int(port), time_out=timeout)
+                connected = client.connect(ip, int(port), time_out=connect_timeout)
                 if connected is False:
                     raise TimeoutError(f'connect failed: {ip}:{port}')
                 self.server = (ip, int(port))
                 self.client = client
+                _restore_op_timeout(client, timeout, connect_timeout)
                 _remember_server('HQ', self.server)
                 break
             except Exception as ex:
@@ -447,7 +464,8 @@ class StdQuotes(BaseQuotes):
         stocks = None
 
         if counts > 0:
-            for start in tqdm(range(0, counts, 1000), ascii=True):
+            # disable=None: 非 TTY（如后端日志）下自动关闭进度条，避免污染日志
+            for start in tqdm(range(0, counts, 1000), ascii=True, disable=None):
                 result = self.client.get_security_list(market=market, start=start)
                 stocks = pandas.concat([stocks, to_data(result)], ignore_index=True) if start > 1 else to_data(result)
 
@@ -821,13 +839,15 @@ class ExtQuotes(BaseQuotes):
                 del kwargs[x]
 
         last_error = None
+        connect_timeout = _connect_timeout(timeout)
         for ip, port in _get_config_servers('EX'):
             self.client = TdxExHq_API(multithread=multithread, raise_exception=False, auto_retry=True, **kwargs)
             try:
-                connected = self.client.connect(ip, int(port), time_out=timeout)
+                connected = self.client.connect(ip, int(port), time_out=connect_timeout)
                 if connected is False:
                     raise TimeoutError(f'connect failed: {ip}:{port}')
                 self.server = (ip, int(port))
+                _restore_op_timeout(self.client, timeout, connect_timeout)
                 _remember_server('EX', self.server)
                 break
             except Exception as ex:  # noqa
@@ -932,7 +952,7 @@ class ExtQuotes(BaseQuotes):
         count = self.client.get_instrument_count()
         pages = math.ceil(count / 100)
 
-        for page in tqdm(range(0, pages), ascii=True):
+        for page in tqdm(range(0, pages), ascii=True, disable=None):
             result += self.client.get_instrument_info(page * 100, 100)
 
         return to_data(result, **kwargs)
