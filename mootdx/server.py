@@ -109,24 +109,28 @@ async def verify(proxy: dict, index):
     :param proxy: 代理IP信息
     :return:
     """
-    return await asyncio.get_event_loop().run_in_executor(None, functools.partial(connect2, proxy=proxy, index=index))
+    # get_event_loop() 在 Python 3.12+ 弃用、3.14 无运行循环时直接抛
+    # RuntimeError；协程内拿当前循环要用 get_running_loop()
+    return await asyncio.get_running_loop().run_in_executor(None, functools.partial(connect2, proxy=proxy, index=index))
 
 
 def server(index=None, limit=5, console=False, sync=True):
     _hosts = hosts[index]
 
     def async_event():
-        event = asyncio.get_event_loop()
-        tasks = []
+        async def _probe_all():
+            tasks = []
 
-        while len(_hosts) > 0:
-            task = event.create_task(verify(_hosts.pop(0), index))
-            task.add_done_callback(partial(callback, key=index))
-            tasks.append(task)
+            while len(_hosts) > 0:
+                task = asyncio.ensure_future(verify(_hosts.pop(0), index))
+                task.add_done_callback(partial(callback, key=index))
+                tasks.append(task)
 
-        # event.is_closed()
-        # event.is_running()
-        event.run_until_complete(asyncio.wait(tasks))
+            if tasks:
+                await asyncio.wait(tasks)
+
+        # asyncio.run 自建事件循环：兼容 3.14（裸 get_event_loop 已不再隐式建循环）
+        asyncio.run(_probe_all())
 
     global results
 
@@ -136,16 +140,17 @@ def server(index=None, limit=5, console=False, sync=True):
     else:
         async_event()
 
-    servers = results[index]
+    # 结果按响应时间从小到大排序、应用 limit —— 不依赖 console。
+    # 历史 bug: 排序只在 console=True 分支里做，bestip(console=False) 选出的
+    # 是"列表序第一个活的"而不是最快的。
+    servers = [x for x in results[index] if x.get('time')]
+    servers.sort(key=lambda item: item['time'])
 
-    # 结果按响应时间从小到大排序
+    if limit:
+        servers = servers[:limit]
+
     if console:
         from prettytable import PrettyTable
-
-        servers.sort(key=lambda item: item['time'])
-
-        if limit:
-            servers = servers[:limit]
 
         logger.debug('[√] 最优服务器:')
 
@@ -176,8 +181,17 @@ def check_server(console=False, limit=5, sync=False) -> None:
 
 
 def bestip(console=False, limit=5, sync=False) -> None:
+    import copy
+
     config_ = get_config_path('config.json')
-    default = dict(CONFIG)
+
+    # 以现有配置为底，探测失败时绝不能把用户已有的 BESTIP/SERVER 清空
+    try:
+        default = json.load(open(config_, 'r', encoding='utf-8'))
+    except (FileNotFoundError, json.JSONDecodeError):
+        default = copy.deepcopy(dict(CONFIG))
+
+    default.setdefault('BESTIP', {})
 
     logger.info('[-] 选择最快的服务器...')
     logger.debug(f'sync => {sync}')
