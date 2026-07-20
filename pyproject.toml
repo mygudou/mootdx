@@ -28,14 +28,17 @@ mootdx = "mootdx.__main__:entry"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-httpx = "^0.25.0"
-tenacity = "^8.1.0"
+# The client uses stable public APIs covered by the test suite.  The former
+# caret constraints (<0.26 / <9) made mootdx impossible to install beside
+# current Google ADK even though the newer releases are compatible.
+httpx = ">=0.25,<1.0"
+tenacity = ">=8.1,<10.0"
 tdxpy = "^0.2.5"
 tqdm = "*"
 prettytable = "^3.5.0"
 click = "^8.1.3"
 typing-extensions = "^4.5.0"
-mini-racer = "^0.12.0"
+mini-racer = ">=0.12,<1.0"
 
 [tool.poetry.group.test.dependencies]
 pytest-cov = "^4.0.0"
