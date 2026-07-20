@@ -74,14 +74,20 @@ def connect2(proxy, index='HQ'):
         return connect(proxy)
 
     api = (TdxHq_API(), TdxExHq_API())[index != 'HQ']
-    fun = ('get_security_count', 'get_instrument_count')[index != 'HQ']
 
     proxy['time'] = None
 
     try:
         with api.connect(proxy.get('addr'), int(proxy.get('port')), time_out=0.7):
             tms = time.perf_counter()
-            if getattr(api, fun)():
+            if index == 'HQ':
+                # 历史 bug: 只验 get_security_count 会放过"能建连、count 正常、
+                # 但 get_security_bars 永远返回空"的僵尸服务器（2026-07-20 实测
+                # 全池 42 台仅 1 台真正供 K 线）。行情服务器必须吐得出 bars 才算通过。
+                passed = bool(api.get_security_bars(9, 0, '000001', 0, 2))
+            else:
+                passed = bool(api.get_instrument_count())
+            if passed:
                 proxy['time'] = (time.perf_counter() - tms) * 1000
                 logger.debug('{addr}:{port} 验证通过，响应时间：{time} ms.'.format(**proxy))
             else:
