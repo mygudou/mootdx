@@ -2,6 +2,7 @@ import math
 import struct
 from collections import OrderedDict
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas
 import pandas as pd
@@ -32,6 +33,21 @@ from mootdx.utils import get_frequency
 from mootdx.utils import get_stock_market
 from mootdx.utils import normalize_stock_code
 from mootdx.utils import to_data
+
+# finance() 财务快照里的货币金额字段（修正后单位：元），详见 finance() docstring。
+FINANCE_MONEY_FIELDS = (
+    'zongzichan', 'liudongzichan', 'gudingzichan', 'wuxingzichan',
+    'liudongfuzhai', 'changqifuzhai', 'zibengongjijin', 'jingzichan',
+    'zhuyingshouru', 'zhuyinglirun', 'yingshouzhangkuan', 'yingyelirun',
+    'touzishouyu', 'jingyingxianjinliu', 'zongxianjinliu', 'cunhuo',
+    'lirunzonghe', 'shuihoulirun', 'jinglirun', 'weifenpeilirun',
+)
+
+# A-share protocol dates are exchange-local dates.  Using the host's local
+# timezone breaks ``minute()`` whenever the caller runs west of China and the
+# two calendars differ (for example, 19:00 PDT is already the next trading day
+# in Shanghai).
+CHINA_TZ = ZoneInfo('Asia/Shanghai')
 
 
 class Quotes(object):
@@ -507,7 +523,7 @@ class StdQuotes(BaseQuotes):
         :return: pd.DataFrame
         """
 
-        today = datetime.now().strftime('%Y%m%d')
+        today = datetime.now(CHINA_TZ).strftime('%Y%m%d')
         return self.minutes(symbol=symbol, date=today, **kwargs)
 
     def minutes(self, symbol=None, date='20191023', **kwargs):
@@ -673,6 +689,11 @@ class StdQuotes(BaseQuotes):
         """
         读取财务信息
 
+        货币金额字段单位为元。TDX 服务器原始值单位是千元，tdxpy 解析时按
+        万元 ×10000，结果整体放大 10 倍（2026-07-24 对 600519/000001/000686/
+        300825 与官方财报逐一核对确认），这里统一 ÷10 纠正；股本类字段原始
+        单位确为万股，×10000 无误，不作调整。
+
         :param symbol: 股票代码
         :return:
         """
@@ -680,6 +701,12 @@ class StdQuotes(BaseQuotes):
         market = get_stock_market(symbol)
         code = normalize_stock_code(symbol)
         result = self.client.get_finance_info(market=market, code=code)
+
+        if result:
+            for field in FINANCE_MONEY_FIELDS:
+                value = result.get(field)
+                if isinstance(value, (int, float)):
+                    result[field] = value / 10
 
         return to_data(result, symbol=code, client=self, **kwargs)
 

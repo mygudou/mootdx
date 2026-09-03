@@ -1,3 +1,6 @@
+from datetime import datetime as real_datetime
+from zoneinfo import ZoneInfo
+
 import pandas
 
 from mootdx.consts import MARKET_BJ
@@ -123,6 +126,24 @@ def test_minutes_accepts_explicit_market_override_for_indices():
 
     assert client.client.calls == [
         ('minutes', {'market': MARKET_SH, 'code': '000001', 'date': '20260430'}),
+    ]
+
+
+def test_minute_uses_shanghai_date_instead_of_host_local_date(monkeypatch):
+    class _HostDateIsStillYesterday:
+        @classmethod
+        def now(cls, tz=None):
+            assert tz == ZoneInfo('Asia/Shanghai')
+            return real_datetime(2026, 9, 3, 10, 57, tzinfo=tz)
+
+    monkeypatch.setattr('mootdx.quotes.datetime', _HostDateIsStillYesterday)
+    client = StdQuotes.__new__(StdQuotes)
+    client.client = _FakeClient()
+
+    client.minute(symbol='688356')
+
+    assert client.client.calls == [
+        ('minutes', {'market': MARKET_SH, 'code': '688356', 'date': '20260903'}),
     ]
 
 
