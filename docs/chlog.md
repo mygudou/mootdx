@@ -1,3 +1,12 @@
+## v0.11.9 (2026-09-30)
+
+### Feat
+
+- `mootdx.health`：行情主站四维健康探针（连得上 / 报价非空 / K 线非空 / 与注入的参考价比对），
+  `probe_host` / `probe_hosts` / `price_agreement` / `servertime_looks_stale`；参考价来源可注入，
+  mootdx 自身不依赖任何 HTTP 源。`bestip` 的 HQ 探测改走同一套探针。
+- `mootdx.contrib.tdxpy_compat.new_hq_api()`：拿已装握手补丁的标准行情客户端，上层不必直接 import tdxpy。
+
 ## v0.11.8 (2026-09-30)
 
 ### Fix

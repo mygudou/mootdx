@@ -29,10 +29,19 @@ def install() -> bool:
         SetupCmd1(self.client).call_api()
         SetupCmd2(self.client).call_api()
 
-    setup._original = TdxHq_API.setup
+    setup._original = getattr(TdxHq_API, 'setup', None)  # 测试替身可能没有 setup
     TdxHq_API.setup = setup
     setattr(TdxHq_API, _FLAG, True)
     return True
+
+
+def new_hq_api(**kwargs):
+    """拿一个已装握手补丁的标准行情客户端。上层应通过这里而不是直接 import tdxpy。"""
+
+    install()
+    from tdxpy.hq import TdxHq_API
+
+    return TdxHq_API(**kwargs)
 
 
 install()

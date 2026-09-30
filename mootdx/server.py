@@ -73,21 +73,26 @@ def connect2(proxy, index='HQ'):
     if index == 'GP':
         return connect(proxy)
 
-    api = (TdxHq_API(), TdxExHq_API())[index != 'HQ']
-
     proxy['time'] = None
 
+    if index == 'HQ':
+        # 统一走 mootdx.health 的四维探针（建连 / 报价非空 / K 线非空；bestip 不注入参考价，
+        # 所以不做比价）。历史 bug：只验 count 会放过 K 线永远为空的僵尸（2026-07-20）。
+        from mootdx.health import probe_host
+
+        result = probe_host(proxy.get('addr'), int(proxy.get('port')), timeout=0.7)
+        if result.ok:
+            proxy['time'] = result.ms
+            logger.debug('{addr}:{port} 验证通过，响应时间：{time} ms.'.format(**proxy))
+        else:
+            logger.debug('{addr}:{port} 验证失败: {detail}'.format(detail=result.detail, **proxy))
+        return proxy
+
+    api = TdxExHq_API()
     try:
         with api.connect(proxy.get('addr'), int(proxy.get('port')), time_out=0.7):
             tms = time.perf_counter()
-            if index == 'HQ':
-                # 历史 bug: 只验 get_security_count 会放过"能建连、count 正常、
-                # 但 get_security_bars 永远返回空"的僵尸服务器（2026-07-20 实测
-                # 全池 42 台仅 1 台真正供 K 线）。行情服务器必须吐得出 bars 才算通过。
-                passed = bool(api.get_security_bars(9, 0, '000001', 0, 2))
-            else:
-                passed = bool(api.get_instrument_count())
-            if passed:
+            if bool(api.get_instrument_count()):
                 proxy['time'] = (time.perf_counter() - tms) * 1000
                 logger.debug('{addr}:{port} 验证通过，响应时间：{time} ms.'.format(**proxy))
             else:

@@ -132,6 +132,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 | 文件导出 | `to_file()` | 支持 | CSV、Excel、HDF5、JSON |
 | 行情服务器测速 | `mootdx bestip` | 支持 | 建连 + 真实取 K 线通过才计时，写入 `~/.mootdx/config.json`；主站表 143 台（2026-09-30 探活验证） |
 | 行情主站握手兼容 | `mootdx.contrib.tdxpy_compat` | 支持 | `import mootdx` 自动只发前两个握手包，新一代主站不再拒绝数据命令（v0.11.8） |
+| 主站健康探针 | `mootdx.health.probe_host` / `probe_hosts` | 支持 | 连得上 / 报价非空 / K 线非空 / 与注入的参考价比对（三态），`bestip` 同源（v0.11.9） |
 | 在线行情 CLI | `mootdx quotes` | 支持 | 命令行读取在线 K 线 |
 | 本地行情 CLI | `mootdx reader` | 支持 | 命令行读取本地数据 |
 | 批量下载 CLI | `mootdx bundle` | 支持 | 批量导出多个证券 K 线 |
@@ -249,6 +250,15 @@ import mootdx
 from tdxpy.hq import TdxHq_API
 assert TdxHq_API._handshake_compat_no_cmd3
 ```
+
+### 主站健康探针（v0.11.9）
+
+`mootdx.health.probe_host(addr, port, reference_prices=None)` 对一台主站做四维体检并返回
+`HostProbe(ok, stage, ms, price_check, detail)`。`reference_prices` 是可注入的 `codes -> {code: price}`
+（比如上层接新浪），不注入则 `price_check='skipped'`，注入了但拿不到是 `'unverified'`——两者都不是
+「价格错」。`probe_hosts` 并发体检一批并按延迟排序；`bestip` 的 HQ 探测就是它。
+`servertime_looks_stale` 只回答报价包的 `servertime` 是否**可疑**（该字段不是最后更新时间，
+同一次响应里各标的能差十几分钟），裁决请用 `price_agreement`。
 
 ### 指数和北交所
 
