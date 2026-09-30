@@ -1,4 +1,5 @@
 from mootdx import config
+from mootdx.contrib import tdxpy_compat  # noqa: F401  新一代主站拒绝 tdxpy 第三个握手包
 from mootdx.consts import EX_HOSTS
 from mootdx.consts import GP_HOSTS
 from mootdx.consts import HQ_HOSTS
