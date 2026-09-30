@@ -130,7 +130,8 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 | 复权工具 | `mootdx.tools.reversion` | 支持 | 提供前复权、后复权等计算工具 |
 | 节假日工具 | `mootdx.utils.holiday` | 支持 | 交易日/节假日判断工具 |
 | 文件导出 | `to_file()` | 支持 | CSV、Excel、HDF5、JSON |
-| 行情服务器测速 | `mootdx bestip` | 支持 | 测速并写入 `~/.mootdx/config.json` |
+| 行情服务器测速 | `mootdx bestip` | 支持 | 建连 + 真实取 K 线通过才计时，写入 `~/.mootdx/config.json`；主站表 143 台（2026-09-30 探活验证） |
+| 行情主站握手兼容 | `mootdx.contrib.tdxpy_compat` | 支持 | `import mootdx` 自动只发前两个握手包，新一代主站不再拒绝数据命令（v0.11.8） |
 | 在线行情 CLI | `mootdx quotes` | 支持 | 命令行读取在线 K 线 |
 | 本地行情 CLI | `mootdx reader` | 支持 | 命令行读取本地数据 |
 | 批量下载 CLI | `mootdx bundle` | 支持 | 批量导出多个证券 K 线 |
@@ -234,6 +235,19 @@ finance = client.finance(symbol="600036")
 f10 = client.F10(symbol="000858", name="财务分析")
 
 client.close()
+```
+
+### 行情主站握手兼容（v0.11.8）
+
+tdxpy 连上主站后会发三个握手包，第三个（`0x0fdb` + 32 字节旧客户端标识）会被新一代主站
+拒绝——主站明文回「客户端与行情主站不匹配,不能使用!」，之后 K 线、批量行情、F10 目录全部
+返回空，看起来像「连得上但没数据」。`mootdx.contrib.tdxpy_compat` 在 `import mootdx` 时把
+`TdxHq_API.setup` 改成只发前两个 `0x000d` 包，老主站行为不变。要确认是否生效：
+
+```python
+import mootdx
+from tdxpy.hq import TdxHq_API
+assert TdxHq_API._handshake_compat_no_cmd3
 ```
 
 ### 指数和北交所
