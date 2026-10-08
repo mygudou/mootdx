@@ -132,6 +132,7 @@ pip install -U "mootdx[all] @ git+https://github.com/mygudou/mootdx.git"
 | 文件导出 | `to_file()` | 支持 | CSV、Excel、HDF5、JSON |
 | 行情服务器测速 | `mootdx bestip` | 支持 | 建连 + 真实取 K 线通过才计时，写入 `~/.mootdx/config.json`；主站表 143 台（2026-09-30 探活验证） |
 | 行情主站握手兼容 | `mootdx.contrib.tdxpy_compat` | 支持 | `import mootdx` 自动只发前两个握手包，新一代主站不再拒绝数据命令（v0.11.8） |
+| 实时分时新框架解析 | `mootdx.contrib.tdxpy_compat` | 支持 | 新一代主站的 `get_minute_time_data` 应答带市场+代码回显与变长报价块，tdxpy 原解析器整段乱价；`import mootdx` 后自动按新框架解析，识别不出则抛错（v0.11.10） |
 | 主站健康探针 | `mootdx.health.probe_host` / `probe_hosts` | 支持 | 连得上 / 报价非空 / K 线非空 / 与注入的参考价比对（三态），`bestip` 同源（v0.11.9） |
 | 在线行情 CLI | `mootdx quotes` | 支持 | 命令行读取在线 K 线 |
 | 本地行情 CLI | `mootdx reader` | 支持 | 命令行读取本地数据 |
@@ -250,6 +251,17 @@ import mootdx
 from tdxpy.hq import TdxHq_API
 assert TdxHq_API._handshake_compat_no_cmd3
 ```
+
+
+### 实时分时新框架解析（v0.11.10）
+
+同一批新一代主站对实时分时 `get_minute_time_data`（`0x051d`）的应答也换了框架：
+`行数(2) + 00 00 + 市场(1) + 代码(6) + 一段变长的报价块 + 行数据`，行数据仍是和历史分时一样的
+三个 varint（价差 / 保留 / 量）。tdxpy 从偏移 4 起直接读 varint，把 `01 "600519"` 当成第一行
+（首行价 0.01、量 48），之后整段乱价负量。`mootdx.contrib.tdxpy_compat` 按回显识别新框架，再从
+回显之后逐字节试探行起点（3×行数 个 varint 恰好消费到包尾、量非负、价格在 30% 带内），老框架
+走原路径；识别不出来抛 `ValueError`，绝不吐乱价。2026-10-08 可用的 116 台主站全部是新框架。
+`Quotes.minute()` 走的是历史分时接口（`get_history_minute_time_data(date=今天)`），本来就不受影响。
 
 ### 主站健康探针（v0.11.9）
 
